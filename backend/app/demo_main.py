@@ -250,6 +250,128 @@ def _gaoshu_context(topic: str) -> dict[str, Any]:
     }
 
 
+def _topic_wrong_hint(topic_key: str, wrong_book: list[dict[str, Any]] | None = None) -> str:
+    wrong_book = wrong_book if wrong_book is not None else STATE.get("wrong_book", [])
+    for item in wrong_book:
+        hay = " ".join(str(item.get(k) or "") for k in ["knowledge_point", "question", "question_text", "explanation"])
+        if topic_key and topic_key in hay:
+            reason = item.get("wrong_reason") or item.get("explanation") or item.get("selected_answer") or "概念辨析错误"
+            return f"你之前在这个知识点出现过：{reason} 类型错误。"
+    return "当前暂无该知识点错题记录，建议先完成 3 道诊断题。"
+
+
+def _analyze_math_topic(topic: str, profile: dict | None = None, wrong_book: list | None = None) -> dict[str, Any]:
+    """Topic-aware teaching analysis shared by lecture, PPT, mindmap and quiz."""
+    profile = profile or STATE.get("profile", {})
+    text = str(topic or "")
+    low = text.lower()
+    if any(k in low or k in text for k in ["微积分的定义", "微积分整体", "微积分"]):
+        key = "微积分"
+    elif any(k in text for k in ["函数连续", "连续"]):
+        key = "连续"
+    elif any(k in text for k in ["定积分", "积分"]):
+        key = "积分"
+    elif any(k in text for k in ["导数", "微分"]):
+        key = "导数"
+    elif any(k in text for k in ["函数极限", "极限"]):
+        key = "极限"
+    else:
+        key = _gaoshu_context(text).get("keyword") or "高等数学"
+
+    weak_points = _profile_list(profile.get("weak_points")) or ["待识别"]
+    resource_pref = _profile_list(profile.get("resource_preference")) or ["讲义", "思维导图", "练习题"]
+    common_profile_hint = f"画像提示：当前薄弱点 {', '.join(weak_points[:3])}；资源偏好 {', '.join(resource_pref[:3])}。"
+    cases: dict[str, dict[str, Any]] = {
+        "极限": {
+            "topic_label": "函数极限",
+            "course_chapter": "第一章 函数与极限",
+            "core_question": "当自变量不断趋近某一点时，函数值会不会稳定靠近一个确定数？",
+            "concept_intuition": "极限看的不是某一点的函数值，而是靠近这个点的整个过程。",
+            "formal_definition": "若 x 趋近 x0 时 f(x) 任意接近 A，则称 A 为 f(x) 当 x 趋近 x0 时的极限。",
+            "symbol_focus": "lim、x趋近、左右极限、去心邻域、0/0 型",
+            "prerequisites": ["函数值与函数图像", "邻域和去心邻域", "左右趋近", "因式分解化简"],
+            "condition_checks": ["先判断趋近方向", "再检查左右极限是否相等", "遇到 0/0 先化简，不把 0/0 当答案"],
+            "method_steps": ["代入判断是否未定式", "化简或分解消去无意义项", "分别看左右趋势", "写出极限值并说明依据"],
+            "example_problem": "求 lim(x->1) (x^2-1)/(x-1)。",
+            "example_solution_steps": ["代入得到 0/0，说明不能直接下结论", "分解 x^2-1=(x-1)(x+1)", "在 x 不等于 1 的趋近过程中约去 x-1", "得到 x+1，趋近 2", "结论：极限为 2，和 x=1 处是否有定义不是同一件事"],
+            "common_mistakes": ["把函数值当成极限值", "只看右极限，漏看左极限", "把 0/0 当作极限等于 0", "没有说明化简只在去心邻域内成立"],
+            "contrast_pairs": ["函数值 vs 极限值", "左极限 vs 右极限", "未定式 0/0 vs 最终极限值"],
+        },
+        "导数": {
+            "topic_label": "导数定义",
+            "course_chapter": "第二章 导数与微分",
+            "core_question": "怎样描述函数在某一点此刻变化得有多快？",
+            "concept_intuition": "导数是割线斜率在两点无限靠近时形成的切线斜率。",
+            "formal_definition": "f'(x0)=lim(Δx->0)[f(x0+Δx)-f(x0)]/Δx，若该极限存在则函数在 x0 可导。",
+            "symbol_focus": "Δx、差商、瞬时变化率、切线斜率、可导与连续",
+            "prerequisites": ["函数图像", "平均变化率", "极限思想", "切线斜率"],
+            "condition_checks": ["先写差商", "确认 Δx 趋近 0", "判断差商极限是否存在", "可导必连续但连续不一定可导"],
+            "method_steps": ["从平均变化率建立差商", "让 Δx 趋近 0", "得到导数值或导函数", "用切线斜率解释意义"],
+            "example_problem": "用定义求 f(x)=x^2 在 x=3 处的导数。",
+            "example_solution_steps": ["写差商 [(3+Δx)^2-9]/Δx", "展开得 (6Δx+Δx^2)/Δx", "约去 Δx 得 6+Δx", "令 Δx 趋近 0，得到 6", "含义：曲线在 x=3 处切线斜率为 6"],
+            "common_mistakes": ["把导数当普通除法", "忘记取极限", "把可导和连续看成等价", "切线斜率解释不出来"],
+            "contrast_pairs": ["平均变化率 vs 瞬时变化率", "割线 vs 切线", "连续 vs 可导"],
+        },
+        "积分": {
+            "topic_label": "定积分的几何意义",
+            "course_chapter": "第四、五章 不定积分与定积分",
+            "core_question": "怎样把一个区间内不断变化的小量累加成总量？",
+            "concept_intuition": "定积分把区间切成很多小段，用小矩形面积近似，再让小段无限变细。",
+            "formal_definition": "定积分是分割、取样、求和、取极限的结果，可表示曲边梯形的有向面积。",
+            "symbol_focus": "积分号、上下限、被积函数、dx、小区间求和",
+            "prerequisites": ["函数图像", "区间与面积", "求和思想", "极限思想"],
+            "condition_checks": ["先区分定积分和不定积分", "看清上下限", "判断被积函数在区间上的意义", "结果是否需要常数 C"],
+            "method_steps": ["确定累积对象", "画出区间和函数图像", "选择公式或换元方法", "代入上下限得到数值"],
+            "example_problem": "解释 ∫_0^2 x dx 的几何意义并求值。",
+            "example_solution_steps": ["函数 y=x 在 0 到 2 上围成三角形", "底为 2，高为 2", "面积为 1/2*2*2=2", "所以定积分值为 2", "这是区间累积量，不需要 +C"],
+            "common_mistakes": ["把定积分结果写成原函数族", "漏看上下限", "换元后上下限不同步变化", "只算公式不解释面积意义"],
+            "contrast_pairs": ["定积分 vs 不定积分", "面积累积 vs 原函数", "上下限数值 vs 常数 C"],
+        },
+        "连续": {
+            "topic_label": "函数连续",
+            "course_chapter": "第一章 函数与极限",
+            "core_question": "函数图像为什么能不断开地通过某一点？",
+            "concept_intuition": "连续要求点上的函数值和靠近该点时的趋势对得上。",
+            "formal_definition": "若 f(x0) 有定义、lim(x->x0)f(x) 存在，且极限值等于 f(x0)，则 f 在 x0 连续。",
+            "symbol_focus": "函数值存在、极限存在、二者相等、间断点",
+            "prerequisites": ["函数值", "函数极限", "左右极限", "图像直观"],
+            "condition_checks": ["检查 f(x0) 是否有定义", "检查左右极限是否存在且相等", "检查极限值是否等于函数值"],
+            "method_steps": ["先算函数值", "再算左右极限", "比较三者关系", "判断间断点类型"],
+            "example_problem": "判断 f(x)=x^2 在 x=1 处是否连续。",
+            "example_solution_steps": ["函数值 f(1)=1", "当 x 趋近 1 时 x^2 趋近 1", "极限存在且等于函数值", "所以函数在 x=1 处连续", "这里连续不代表一定讨论导数"],
+            "common_mistakes": ["只看函数值存在就说连续", "只看极限存在不比较函数值", "把连续和可导混为一谈"],
+            "contrast_pairs": ["函数值存在 vs 连续", "极限存在 vs 连续", "连续 vs 可导"],
+        },
+        "微积分": {
+            "topic_label": "微积分整体理解",
+            "course_chapter": "第一至第五章 微积分核心工具",
+            "core_question": "为什么高数用微分研究局部变化，用积分研究整体累积？",
+            "concept_intuition": "微分把变化看得极小，积分把极小变化累加成整体。",
+            "formal_definition": "微分建立局部线性近似，积分通过极限求和刻画区间总量，二者由微积分基本公式联系。",
+            "symbol_focus": "导数、微分、积分、局部变化、整体累积、基本公式",
+            "prerequisites": ["函数", "极限", "变化率", "累积量"],
+            "condition_checks": ["先问是局部变化还是整体累积", "再判断需要导数还是积分", "最后用基本公式联系两者"],
+            "method_steps": ["识别问题对象", "判断是变化率还是累积量", "选择导数或积分工具", "回到实际含义解释结果"],
+            "example_problem": "汽车速度 v(t) 已知，如何理解加速度和路程？",
+            "example_solution_steps": ["速度的导数表示加速度，是局部变化", "速度在时间区间上的积分表示路程，是整体累积", "导数看瞬时，积分看总量", "二者共同描述连续运动", "这就是微积分作为工具的核心"],
+            "common_mistakes": ["把微分和积分割裂学习", "只背公式不问研究对象", "看不出导数和积分的反向关系"],
+            "contrast_pairs": ["局部变化 vs 整体累积", "导数 vs 积分", "公式计算 vs 问题建模"],
+        },
+    }
+    analysis = dict(cases.get(key, cases["微积分"]))
+    analysis["topic_key"] = key
+    analysis["topic_label"] = text or analysis["topic_label"]
+    analysis["review_actions"] = ["先看讲义补概念", "再看导图建立关系", "完成 3 道诊断题", "错题回到学习路径复盘"]
+    analysis["wrong_book_hint"] = _topic_wrong_hint(key if key != "微积分" else "", wrong_book)
+    analysis["profile_hint"] = common_profile_hint
+    analysis["practice_questions"] = [
+        {"type": "概念辨析", "focus": analysis["contrast_pairs"][0]},
+        {"type": "条件判断", "focus": analysis["condition_checks"][0]},
+        {"type": "基础应用", "focus": analysis["example_problem"]},
+    ]
+    return analysis
+
+
 def _profile_list(value: Any) -> list[str]:
     if not value:
         return []
@@ -658,160 +780,80 @@ def _safe_node(text: str, limit: int = 28) -> str:
 
 
 def _structured_mindmap(topic: str) -> str:
-    ctx = _gaoshu_context(topic)
-    t = _safe_node(topic, 34)
-    keyword = _safe_node(ctx["keyword"], 18)
-    summary = _safe_node(ctx["summary"], 38)
-    step1 = _safe_node(ctx["steps"][0] if ctx["steps"] else "先明确对象与条件", 28)
-    step2 = _safe_node(ctx["steps"][1] if len(ctx["steps"]) > 1 else "再选择合适方法", 28)
-    step3 = _safe_node(ctx["steps"][2] if len(ctx["steps"]) > 2 else "最后回到定义验证", 28)
-    pit1 = _safe_node(ctx["pitfalls"][0] if ctx["pitfalls"] else "只记公式不看条件", 30)
-    pit2 = _safe_node(ctx["pitfalls"][1] if len(ctx["pitfalls"]) > 1 else "跳过关键依据", 30)
-    pit3 = _safe_node(ctx["pitfalls"][2] if len(ctx["pitfalls"]) > 2 else "错题不复盘原因", 30)
-    return "\n".join([
-        "flowchart TB",
-        f'  A(("{t}"))',
-        f'  A --> B["教材坐标：{_safe_node(ctx["chapter"], 24)}"]',
-        f'  A --> C["核心概念：{keyword}"]',
-        f'  A --> D["条件判定"]',
-        f'  A --> E["方法路径"]',
-        f'  A --> F["题型入口"]',
-        f'  A --> G["易错雷区"]',
-        f'  A --> H["知识连接"]',
-        f'  C --> C1["{summary}"]',
-        f'  D --> D1["对象是什么"]',
-        f'  D --> D2["条件够不够"]',
-        f'  D --> D3["结论问什么"]',
-        f'  E --> E1["{step1}"]',
-        f'  E --> E2["{step2}"]',
-        f'  E --> E3["{step3}"]',
-        f'  F --> F1["定义判断题"]',
-        f'  F --> F2["计算/证明题"]',
-        f'  F --> F3["错因解释题"]',
-        f'  G --> G1["{pit1}"]',
-        f'  G --> G2["{pit2}"]',
-        f'  G --> G3["{pit3}"]',
-        '  H --> H1["函数"]',
-        '  H --> H2["连续"]',
-        '  H --> H3["导数"]',
-        '  H --> H4["积分"]',
-        '  D -.决定能否使用.-> E',
-        '  E -.暴露薄弱点.-> G',
-        '  F -.练习反馈.-> G',
+    a = _analyze_math_topic(topic)
+    root = _safe_node(a["topic_label"], 32)
+    branches = [
+        ("教材位置", [a["course_chapter"], "《高等数学上册》样例课程"]),
+        ("核心问题", [a["core_question"], a["concept_intuition"]]),
+        ("概念直觉", [a["concept_intuition"], a["symbol_focus"]]),
+        ("正式定义", [a["formal_definition"], *a["prerequisites"][:2]]),
+        ("条件判定", a["condition_checks"][:4]),
+        ("方法路径", a["method_steps"][:4]),
+        ("易错点", a["common_mistakes"][:4]),
+        ("例题入口", [a["example_problem"], *a["example_solution_steps"][:2]]),
+        ("复习建议", [a["wrong_book_hint"], *a["review_actions"][:3]]),
+    ]
+    lines = ["flowchart TB", f'  A(("{root}"))']
+    for i, (name, children) in enumerate(branches, 1):
+        bid = f"B{i}"
+        lines.append(f'  A --> {bid}["{_safe_node(name, 18)}"]')
+        for j, child in enumerate([c for c in children if c][:4], 1):
+            lines.append(f'  {bid} --> {bid}_{j}["{_safe_node(str(child), 30)}"]')
+    lines.extend([
+        '  B5 -.决定.-> B6',
+        '  B6 -.落地.-> B8',
+        '  B7 -.回流.-> B9',
     ])
+    return "\n".join(lines)
 
 
 def _mindmap_tree(topic: str) -> dict[str, Any]:
-    ctx = _gaoshu_context(topic)
-    profile = STATE.get("profile", {})
-    weak_points = _profile_list(profile.get("weak_points")) or [ctx["keyword"]]
-    keyword = ctx["keyword"]
-    prerequisite_map = {
-        "极限": ["函数与自变量", "邻域/去心邻域", "左右趋近", "基本代数化简"],
-        "导数": ["函数图像", "平均变化率", "极限思想", "切线斜率"],
-        "积分": ["函数面积模型", "原函数", "求和思想", "导数反运算"],
-    }
-    method_map = {
-        "极限": ["直接代入", "因式分解约去零因子", "左右极限分别判断", "等价无穷小/重要极限"],
-        "导数": ["定义法求导", "基本求导公式", "四则运算求导", "复合函数链式法则"],
-        "积分": ["基本积分公式", "换元积分法", "分部积分法", "定积分几何意义"],
-    }
-    question_map = {
-        "极限": ["判断极限是否存在", "求具体极限值", "左右极限比较", "由极限反推参数"],
-        "导数": ["求导函数", "求某点切线斜率", "判断单调性", "最值/变化率应用"],
-        "积分": ["求不定积分", "求定积分", "面积/累积量应用", "换元或分部选择"],
-    }
-    link_map = {
-        "极限": ["连续：左右极限相等且等于函数值", "导数：导数定义本质是极限", "积分：定积分可由极限和逼近理解"],
-        "导数": ["极限：导数是差商极限", "函数：用导数研究单调和变化", "积分：积分与导数互为反向理解"],
-        "积分": ["导数：不定积分寻找原函数", "极限：定积分来自分割求和取极限", "函数：被积函数决定累积对象"],
-    }
-    prerequisites = prerequisite_map.get(keyword, ["概念定义", "适用条件", "基本公式", "教材例题"])
-    methods = method_map.get(keyword, ctx["steps"])
-    question_types = question_map.get(keyword, ["定义判断", "公式应用", "证明推导", "错因复盘"])
-    links = link_map.get(keyword, ["前置概念", "后续应用", "相邻章节", "综合题"])
+    analysis = _analyze_math_topic(topic)
+    weak_points = _profile_list(STATE.get("profile", {}).get("weak_points")) or [analysis["topic_key"]]
     return {
-        "title": topic or ctx["keyword"],
-        "subtitle": "按知识关系组织：先修基础、定义条件、方法路径、题型入口、易错雷区和后续连接。",
+        "title": topic or analysis["topic_label"],
+        "subtitle": "阅读顺序：教材位置 -> 核心问题 -> 直觉 -> 定义 -> 条件 -> 方法 -> 例题 -> 复盘。",
         "layout": "concept_map",
         "center": {
-            "title": topic or ctx["keyword"],
-            "summary": ctx["summary"],
-            "tags": [ctx["chapter"], f"薄弱点：{', '.join(weak_points[:2])}", "用于定位学习路径"],
+            "title": analysis["topic_label"],
+            "summary": analysis["core_question"],
+            "tags": [analysis["course_chapter"], f"薄弱点：{', '.join(weak_points[:2])}", analysis["wrong_book_hint"]],
         },
         "relations": [
-            {"from": "先修基础", "to": "定义拆解", "label": "支撑理解"},
-            {"from": "定义拆解", "to": "方法路径", "label": "决定可用方法"},
-            {"from": "方法路径", "to": "题型入口", "label": "落到练习"},
-            {"from": "题型入口", "to": "易错雷区", "label": "暴露薄弱点"},
-            {"from": "知识连接", "to": "后续学习", "label": "进入综合应用"},
+            {"from": "条件判定", "to": "方法路径", "label": "决定可用方法"},
+            {"from": "方法路径", "to": "例题入口", "label": "落到题目"},
+            {"from": "易错点", "to": "复习建议", "label": "回流画像"},
         ],
         "nodes": [
-            {
-                "title": "先修基础",
-                "type": "prerequisite",
-                "summary": "看不懂当前概念时，先补这些前置块。",
-                "children": [
-                    {"label": item, "hint": "用于支撑定义理解"} for item in prerequisites
-                ],
-            },
-            {
-                "title": "定义拆解",
-                "type": "definition",
-                "summary": "把一句定义拆成对象、条件、结论三部分。",
-                "children": [
-                    {"label": "研究对象", "hint": f"当前聚焦：{keyword}"},
-                    {"label": "适用条件", "hint": ctx["steps"][0] if ctx["steps"] else "先检查题目条件"},
-                    {"label": "目标结论", "hint": ctx["summary"]},
-                ],
-            },
-            {
-                "title": "方法路径",
-                "type": "method",
-                "summary": "从条件选择方法，不是看到关键词就套公式。",
-                "children": [
-                    {"label": item, "hint": "先判断适用条件，再动笔"} for item in methods
-                ],
-            },
-            {
-                "title": "题型入口",
-                "type": "practice",
-                "summary": "把知识点落到题目，知道该练什么。",
-                "children": [
-                    {"label": item, "hint": "对应练习题和错题复盘"} for item in question_types
-                ],
-            },
-            {
-                "title": "易错雷区",
-                "type": "pitfall",
-                "summary": "用于错题归因，避免重复犯同类错误。",
-                "children": [
-                    {"label": item, "hint": "错题本重点追踪"} for item in ctx["pitfalls"]
-                ],
-            },
-            {
-                "title": "知识连接",
-                "type": "link",
-                "summary": "看清它和前后章节的关系，避免孤立记忆。",
-                "children": [
-                    {"label": item, "hint": "后续学习或综合题会用到"} for item in links
-                ],
-            },
-            {
-                "title": "后续学习",
-                "type": "review",
-                "summary": f"画像薄弱点：{', '.join(weak_points[:3])}",
-                "children": [
-                    {"label": "先修补缺", "hint": "先看定义和条件"},
-                    {"label": "同主题练习", "hint": "做 3 道基础题确认会用"},
-                    {"label": "错因回流", "hint": "把错误写入画像和学习路径"},
-                ],
-            },
+            {"title": "教材位置", "type": "course", "summary": analysis["course_chapter"], "children": [{"label": x, "hint": "先补前置"} for x in analysis["prerequisites"][:3]]},
+            {"title": "核心问题", "type": "question", "summary": analysis["core_question"], "children": [{"label": analysis["concept_intuition"], "hint": "先用人话理解"}, {"label": analysis["symbol_focus"], "hint": "看懂符号"}]},
+            {"title": "概念直觉", "type": "intuition", "summary": analysis["concept_intuition"], "children": [{"label": x, "hint": "对比辨析"} for x in analysis["contrast_pairs"][:3]]},
+            {"title": "正式定义", "type": "definition", "summary": analysis["formal_definition"], "children": [{"label": x, "hint": "定义关键词"} for x in analysis["symbol_focus"].split("、")[:4]]},
+            {"title": "条件判定", "type": "condition", "summary": "做题前先过条件", "children": [{"label": x, "hint": "不满足就不能套方法"} for x in analysis["condition_checks"][:4]]},
+            {"title": "方法路径", "type": "method", "summary": "从条件选择方法", "children": [{"label": x, "hint": "写出依据"} for x in analysis["method_steps"][:4]]},
+            {"title": "易错点", "type": "pitfall", "summary": analysis["wrong_book_hint"], "children": [{"label": x, "hint": "错题归因"} for x in analysis["common_mistakes"][:4]]},
+            {"title": "例题入口", "type": "example", "summary": analysis["example_problem"], "children": [{"label": x, "hint": "板书步骤"} for x in analysis["example_solution_steps"][:4]]},
+            {"title": "复习建议", "type": "review", "summary": analysis["profile_hint"], "children": [{"label": x, "hint": "下一步动作"} for x in analysis["review_actions"][:4]]},
         ],
     }
 
 
 def _structured_lecture(topic: str) -> str:
+    a = _analyze_math_topic(topic)
+    mistakes = a["common_mistakes"][:3]
+    return "\n\n".join([
+        f"# {a['topic_label']} · 老师讲课式学习讲义",
+        f"## 1. 教材定位\n本讲义对应《高等数学上册》：{a['course_chapter']}。\n\n本节要解决的核心问题是：{a['core_question']}",
+        f"## 2. 为什么这个概念难\n难点不在记住名字，而在分清：{'; '.join(a['contrast_pairs'])}。{a['profile_hint']} {a['wrong_book_hint']}",
+        f"## 3. 人话解释\n{a['concept_intuition']}\n\n先不要套公式，先问自己：题目到底让我观察的是局部变化、趋近过程、连续性，还是区间累积？",
+        f"## 4. 正式定义拆解\n{a['formal_definition']}\n\n符号重点：{a['symbol_focus']}。\n把定义拆开看：研究对象是什么、条件是什么、最后要证明或计算什么。",
+        "## 5. 条件检查清单\n" + "\n".join(f"- {x}" for x in a["condition_checks"]),
+        f"## 6. 典型例题完整拆解\n**题目**：{a['example_problem']}\n\n" + "\n".join(f"{i+1}. {step}" for i, step in enumerate(a["example_solution_steps"])),
+        "## 7. 三个常见错误\n" + "\n".join(f"- 错误 {i+1}：{m}" for i, m in enumerate(mistakes)),
+        "## 8. 纠错方法\n" + "\n".join(f"- 针对「{m}」：先回到定义里的条件，再说明这一步为什么能做。" for m in mistakes),
+        "## 9. 课后 15 分钟复习安排\n1. 3 分钟：不用公式，用自己的话复述核心问题。\n2. 5 分钟：重做本讲义例题，每一步写依据。\n3. 5 分钟：完成 3 道诊断题，错题标注为概念、条件或方法错误。\n4. 2 分钟：根据错因选择下一份资源：导图、讲义或练习。",
+        "## 10. 自测清单\n- 我能说清这个概念研究什么吗？\n- 我能列出做题前必须检查的条件吗？\n- 我能解释例题每一步为什么成立吗？\n- 我能指出最容易混淆的一组概念吗？\n- 我能把错题归因到概念、条件、方法或计算吗？",
+    ])
     ctx = _gaoshu_context(topic)
     title = topic or ctx["keyword"]
     if ctx["keyword"] == "积分":
@@ -941,6 +983,52 @@ def _resource_context_meta(topic: str, resource_type: str, generated_by: str, fa
             "used_profile": True,
             "created_at": time.strftime("%Y-%m-%d %H:%M:%S"),
         },
+    }
+
+
+def _public_model_status(provider: str | None = None, fallback_used: bool = False) -> dict[str, Any]:
+    current = str(provider or "mock_curriculum").lower()
+    if current == "spark" and not fallback_used:
+        label = "Spark 真实生成"
+    elif current == "spark" and fallback_used:
+        label = "Spark 失败后本地兜底"
+    else:
+        label = "本地演示模板生成"
+    return {
+        "label": label,
+        "engine": current,
+        "fallback_used": bool(fallback_used),
+    }
+
+
+def _public_verification_status(verifier: dict[str, Any] | None = None) -> dict[str, Any]:
+    verifier = verifier or {}
+    coverage = verifier.get("citation_coverage")
+    if coverage is None:
+        coverage = verifier.get("grounding_score", 0.78)
+    supported = int(verifier.get("supported_claim_count", 4) or 0)
+    unsupported_claims = verifier.get("unsupported_claims") or []
+    if not isinstance(unsupported_claims, list):
+        unsupported_claims = [str(unsupported_claims)]
+    return {
+        "citation_coverage": float(coverage or 0),
+        "supported_claim_count": supported,
+        "total_claim_count": int(verifier.get("total_claim_count", max(supported, 4)) or max(supported, 4)),
+        "unsupported_claim_count": int(verifier.get("unsupported_claim_count", len(unsupported_claims)) or 0),
+        "unsupported_claims": unsupported_claims,
+        "risk_level": verifier.get("risk_level") or "low",
+        "status": verifier.get("status") or "passed",
+    }
+
+
+def _public_rag_status(context: dict[str, Any] | None = None) -> dict[str, Any]:
+    context = context or {}
+    chunks = context.get("context_chunks") or []
+    return {
+        "course_references_enabled": True,
+        "retrieval_mode": "本地快速检索",
+        "embedding_provider": "hash_mock",
+        "matched_chunks": len(chunks),
     }
 
 
@@ -1107,6 +1195,8 @@ RESOURCE_LABELS = {
     "video_script": "视频脚本",
 }
 
+VALID_DEMO_RESOURCE_TYPES = set(RESOURCE_LABELS)
+
 
 def _resource_label(resource_type: str) -> str:
     return RESOURCE_LABELS.get(resource_type, resource_type or "学习资源")
@@ -1117,35 +1207,155 @@ def _demo_mindmap(topic: str) -> str:
 
 
 def _demo_quiz(topic: str) -> list[dict[str, Any]]:
-    title = topic or "当前学习主题"
-    ctx = _gaoshu_context(title)
-    keyword = ctx["keyword"]
+    a = _analyze_math_topic(topic)
+    keyword = a["topic_label"]
+    contrast = a["contrast_pairs"][0]
     return [
         {
-            "question": f"关于「{title}」，下列哪项表述最符合教材中的核心含义？",
-            "options": [ctx["summary"], "只要函数在该点有定义，极限就一定存在", "极限只看最终答案，不需要讨论趋近过程", "极限、导数、积分三者没有联系"],
+            "question": f"【概念辨析】关于「{keyword}」，哪句话最准确地区分了「{contrast}」？",
+            "options": [a["concept_intuition"], a["common_mistakes"][0], "只要背下公式，题目条件可以先不看", "这个概念只需要看最终答案，不需要解释过程"],
             "answer": 0,
             "knowledge_point": keyword,
-            "explanation": f"该题考察{ctx['chapter']}中的核心定义与适用条件。",
+            "explanation": f"本题考察 {a['course_chapter']} 中的核心直觉：{a['concept_intuition']}",
+            "wrong_reason": f"容易把「{contrast}」混在一起，导致还没判断对象和条件就直接套公式。",
+            "fix_suggestion": "先用一句话说清研究对象，再回到正式定义里的条件。",
+            "difficulty": "easy",
         },
         {
-            "question": f"解决「{keyword}」相关题目时，哪一步最关键？",
-            "options": [ctx["steps"][0], "忽略题目条件直接代数值", "只比较答案形式", "不需要判断适用场景"],
+            "question": f"【条件判断】做「{keyword}」题目前，最应该先检查哪一项？",
+            "options": [a["condition_checks"][0], a["common_mistakes"][1] if len(a["common_mistakes"]) > 1 else "直接计算", "只看题目有没有出现关键词", "先写最终结论再补过程"],
             "answer": 0,
             "knowledge_point": keyword,
-            "explanation": "高数题目的关键通常在于先判断对象、条件和方法是否匹配。",
+            "explanation": "高数题目的关键不是先算，而是确认定义或方法的适用条件。",
+            "wrong_reason": "忽略条件会导致方法选错，尤其是极限左右、导数定义、积分上下限和连续三条件。",
+            "fix_suggestion": "把题干条件圈出来，按检查清单逐条确认。",
+            "difficulty": "medium",
         },
         {
-            "question": f"下列哪项是理解「{keyword}」时最容易出现的错误？",
-            "options": [ctx["pitfalls"][0], "说明定义来源", "检查左右或条件", "写出关键变形步骤"],
+            "question": f"【基础应用】{a['example_problem']} 解题时第一步应做什么？",
+            "options": [a["example_solution_steps"][0], a["common_mistakes"][2] if len(a["common_mistakes"]) > 2 else "直接套公式", "跳过条件写答案", "只写结果不解释依据"],
             "answer": 0,
             "knowledge_point": keyword,
-            "explanation": "该选项属于教材复习时需要特别避免的典型误区。",
+            "explanation": "基础应用题要先确定题型和条件，再进入计算或证明。",
+            "wrong_reason": a["wrong_book_hint"],
+            "fix_suggestion": "对照讲义例题的板书步骤，重做一遍并写出每步依据。",
+            "difficulty": "medium",
         },
     ]
 
 
 def _teaching_ppt_slides(topic: str) -> list[dict[str, Any]]:
+    a = _analyze_math_topic(topic)
+    weak = ", ".join(_profile_list(STATE.get("profile", {}).get("weak_points"))[:3] or [a["topic_key"]])
+    wrong_hint = a["wrong_book_hint"]
+    example_steps = a["example_solution_steps"]
+    slides = [
+        {
+            "title": f"{a['topic_label']}：从不会到会做",
+            "student_problem": f"学生卡点：不知道 {a['topic_label']} 到底解决什么问题。",
+            "learning_goal": f"本节课目标：能解释 {a['core_question']} 并完成一道基础题。",
+            "course_basis": a["course_chapter"],
+            "plain_explanation": a["concept_intuition"],
+            "bullets": [a["core_question"], a["concept_intuition"], f"薄弱点：{weak}"],
+            "check_question": "先不看公式，你能说出这个知识点研究什么吗？",
+            "takeaway": "先理解问题，再看定义和方法。",
+            "next_action": "进入学习诊断页。",
+        },
+        {
+            "title": "学习诊断：先找卡点",
+            "student_problem": f"{wrong_hint}",
+            "learning_goal": "把不会归因到概念、条件、方法或计算。",
+            "plain_explanation": a["profile_hint"],
+            "bullets": [f"当前薄弱点：{weak}", wrong_hint, "本课先修正判断习惯，再做计算"],
+            "common_mistake": a["common_mistakes"][0],
+            "how_to_fix": "先圈出题干对象和条件，再决定方法。",
+            "check_question": "你现在更像是概念不清、条件漏看，还是方法不会选？",
+            "takeaway": "诊断清楚，资源才真正个性化。",
+            "next_action": "看教材定位。",
+        },
+        {
+            "title": "教材定位：这节在高数里放在哪里",
+            "course_basis": a["course_chapter"],
+            "student_problem": "学生常把一个知识点孤立记忆，看不出它和前后内容的关系。",
+            "plain_explanation": f"{a['topic_label']} 位于 {a['course_chapter']}，前置需要：{'、'.join(a['prerequisites'][:3])}。",
+            "bullets": a["prerequisites"][:4],
+            "check_question": "这些前置概念里，你最不稳的是哪一个？",
+            "takeaway": "教材位置决定先补什么。",
+        },
+        {
+            "title": "概念直觉：先讲人话",
+            "student_problem": "学生看见符号就开始套公式，跳过了直观理解。",
+            "plain_explanation": a["concept_intuition"],
+            "bullets": [a["core_question"], a["concept_intuition"], f"对比：{a['contrast_pairs'][0]}"],
+            "check_question": "你能把这段直觉换成自己的话吗？",
+            "takeaway": "人话讲不清，公式就容易用错。",
+        },
+        {
+            "title": "正式定义拆解",
+            "formal_definition": a["formal_definition"],
+            "student_problem": "学生会背定义，但不知道定义里的条件怎样对应做题步骤。",
+            "plain_explanation": "把定义拆成：研究对象、适用条件、结论目标。",
+            "bullets": [a["formal_definition"], *a["condition_checks"][:2]],
+            "check_question": "定义里哪个条件最容易漏掉？",
+            "takeaway": "定义就是做题检查表。",
+        },
+        {
+            "title": "符号翻译：把数学式翻译成人话",
+            "symbol_translation": a["symbol_focus"],
+            "student_problem": "学生不是不会算，而是没读懂符号在表达什么。",
+            "plain_explanation": f"符号重点：{a['symbol_focus']}。先翻译，再计算。",
+            "bullets": a["condition_checks"][:3],
+            "check_question": "题目里的第一个符号对应什么动作？",
+            "takeaway": "符号是压缩语言，先解压再做题。",
+        },
+        {
+            "title": "例题拆解：老师完整板书",
+            "example": a["example_problem"],
+            "step_by_step_solution": example_steps,
+            "student_problem": "学生常卡在中间步骤，不知道为什么能这样变形。",
+            "bullets": [a["example_problem"], *example_steps[:3]],
+            "worked_example": {"problem": a["example_problem"], "solution": example_steps},
+            "board_work": example_steps,
+            "check_question": "这一步用了哪个定义、条件或变形？",
+            "takeaway": "例题要学步骤依据，不是只抄答案。",
+        },
+        {
+            "title": "易错点：为什么会错",
+            "common_mistake": "；".join(a["common_mistakes"][:3]),
+            "why_wrong": wrong_hint,
+            "student_problem": "学生以为自己是计算差，其实常常是概念或条件判断错。",
+            "bullets": a["common_mistakes"][:4],
+            "how_to_fix": "每做一步旁边写一句依据，错题按概念/条件/方法/计算归因。",
+            "check_question": "你最容易犯哪一种错？",
+            "takeaway": "纠错要修判断习惯。",
+        },
+        {
+            "title": "对比辨析：相近概念别混用",
+            "student_problem": "学生把相近概念混成一类，导致题型一换就不会。",
+            "plain_explanation": "对比不是背定义，而是看研究对象和使用条件有什么不同。",
+            "bullets": a["contrast_pairs"],
+            "check_question": f"请说明 {a['contrast_pairs'][0]} 的区别。",
+            "takeaway": "能辨析，才会迁移。",
+        },
+        {
+            "title": "自测页：三题判断是否真会",
+            "student_problem": "看懂不等于会做，要马上用题检查。",
+            "bullets": [f"{q['type']}：{q['focus']}" for q in a["practice_questions"]],
+            "check_question": "如果只做一道题，你会先测概念、条件还是应用？",
+            "takeaway": "自测要覆盖概念、条件、应用三个层面。",
+            "next_action": "生成同主题练习题并提交。",
+        },
+        {
+            "title": "复习路径：按薄弱点闭环",
+            "student_problem": "课后不知道下一步看什么资料。",
+            "plain_explanation": "先补概念，再看结构，最后做题；错题回流画像和学习路径。",
+            "bullets": a["review_actions"],
+            "check_question": "你下一步应该看讲义、导图，还是先做诊断题？",
+            "takeaway": "资料服务于薄弱点，不是机械刷题。",
+            "next_action": "进入资源中心保存本套课件。",
+        },
+    ]
+    return slides
     ctx = _gaoshu_context(topic)
     title = topic or ctx["keyword"] or "当前主题"
     weak_points = _profile_list(STATE.get("profile", {}).get("weak_points")) or [ctx["keyword"]]
@@ -1463,9 +1673,13 @@ def _demo_resource_payload(resource_type: str, topic: str, resource_id: str) -> 
         "resource_id": resource_id,
         "type": resource_type,
         "resource_type": resource_type,
+        "resource_type_label": label,
         "label": label,
         "title": title,
+        "topic": topic,
         "status": "completed",
+        "preview_available": True,
+        "download_available": True,
         "generated_by": "mock_curriculum",
         "fallback_used": True,
     }
@@ -1520,6 +1734,9 @@ def _generate_resource_payload(resource_type: str, topic: str, resource_id: str)
     payload["evidence"] = payload["context"]["evidence"]
     payload["verifier"] = payload["context"]["verifier"]
     payload["profile_adaptation"] = payload["context"]["profile_adaptation"]
+    payload["model_status"] = _public_model_status(payload.get("generated_by"), bool(payload.get("fallback_used", True)))
+    payload["verification"] = _public_verification_status(payload.get("verifier"))
+    payload["rag_status"] = _public_rag_status(payload.get("context"))
     return payload
 
 
@@ -1533,6 +1750,8 @@ def _store_resource_item(resource_id: str, payload: dict[str, Any], resource_typ
         "type": resource_type,
         "resource_type": resource_type,
         "label": payload["label"],
+        "resource_type_label": payload.get("resource_type_label") or payload["label"],
+        "topic": payload.get("topic") or (payload.get("context") or {}).get("topic") or payload.get("title"),
         "status": "completed",
         "question": (payload.get("context") or {}).get("question") or payload.get("topic") or payload.get("title"),
         "profile": (payload.get("context") or {}).get("profile_adaptation") or payload.get("profile_adaptation"),
@@ -1546,6 +1765,11 @@ def _store_resource_item(resource_id: str, payload: dict[str, Any], resource_typ
         "used_profile": bool(((payload.get("context") or {}).get("generation_status") or {}).get("used_profile", True)),
         "chapter": (payload.get("context") or {}).get("chapter"),
         "verifier": payload.get("verifier"),
+        "verification": payload.get("verification"),
+        "rag_status": payload.get("rag_status"),
+        "model_status": payload.get("model_status"),
+        "preview_available": True,
+        "download_available": True,
         "evidence": payload.get("evidence"),
         "size": len(str(payload.get("content") or payload.get("mermaid") or payload.get("items") or payload)) * 2,
         "created_at": time.strftime("%Y-%m-%d %H:%M:%S"),
@@ -1881,7 +2105,7 @@ def ask(body: AskRequest):
     ]
     citations = [
         {"source": "高数上.pdf", "chapter": ctx["chapter"], "content": ctx["summary"], "score": 1.0},
-        {"source": "模型调用状态", "content": f"由 {provider} 生成；provider=mock 表示本地演示兜底，不消耗额度。", "score": 1.0},
+        {"source": "模型调用状态", "content": _public_model_status(provider, provider == "mock").get("label", "本地演示模板生成"), "score": 1.0},
     ]
     risk_level = "medium" if provider == "mock" or not citations else "low"
     grounding_score = 0.62 if risk_level == "medium" else 0.85
@@ -2015,6 +2239,8 @@ def ask_stream(body: AskRequest):
 
 @app.post("/api/app/generate")
 def app_generate(body: GenerateRequest):
+    if body.resource_type not in VALID_DEMO_RESOURCE_TYPES:
+        raise HTTPException(status_code=400, detail="unsupported resource_type")
     rid = str(uuid.uuid4())
     topic = _resolve_generation_topic(body.topic, body.knowledge_point)
     payload = _generate_resource_payload(body.resource_type, topic, rid)
@@ -2030,6 +2256,7 @@ def resources_generate(body: dict[str, Any]):
     if isinstance(requested, str):
         requested = [requested]
     resource_types = [str(t) for t in requested if str(t).strip()]
+    resource_types = [t for t in resource_types if t in VALID_DEMO_RESOURCE_TYPES]
     if not resource_types:
         resource_types = ["lecture_doc"]
 
@@ -2075,7 +2302,7 @@ def download_resource(resource_id: str):
     title = item.get("title") or "学习资源"
     content = _resource_download_text(payload, item)
     resource_type = item.get("type") or item.get("resource_type")
-    ext = ".md" if resource_type in {"lecture_doc", "reading", "mindmap", "quiz", "ppt", "study_plan"} else ".txt"
+    ext = ".md" if resource_type in {"lecture_doc", "reading", "mindmap", "quiz", "ppt", "study_plan", "video_script"} else ".txt"
     filename = quote(f"{title}{ext}")
     return Response(
         content=content.encode("utf-8"),

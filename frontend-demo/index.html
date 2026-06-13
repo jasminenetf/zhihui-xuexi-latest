@@ -19,35 +19,45 @@
     <span class="logo-text">智学工坊</span>
   </div>
   <nav class="sidebar-nav">
+    <div class="nav-section-label">学习工作台</div>
     <div class="nav-item active" data-page="dashboard" id="nav-dashboard">
-      <span class="nav-icon">🏠</span><span>首页</span>
+      <span class="nav-icon">🏠</span><span>学习工作台</span>
     </div>
+    <div class="nav-section-label">AI 会话</div>
     <div class="nav-item" data-page="assistant" id="nav-assistant">
-      <span class="nav-icon">💬</span><span>会话中心</span>
+      <span class="nav-icon">💬</span><span>AI 会话</span>
     </div>
-    <div class="nav-item" data-page="courses" id="nav-courses">
-      <span class="nav-icon">📚</span><span>课程中心</span>
-    </div>
+    <div class="nav-section-label">学习资源</div>
     <div class="nav-item" data-page="generator" id="nav-generator">
-      <span class="nav-icon">⚡</span><span>资源生成</span>
+      <span class="nav-icon">⚡</span><span>手动生成学习资料</span>
     </div>
     <div class="nav-item" data-page="resource-center" id="nav-resource-center">
-      <span class="nav-icon">📦</span><span>资源中心</span>
+      <span class="nav-icon">📦</span><span>我的学习资料库</span>
     </div>
+    <div class="nav-section-label">练习与错题</div>
     <div class="nav-item" data-page="wrong-book" id="nav-wrong-book">
-      <span class="nav-icon">🧯</span><span>错题本</span>
+      <span class="nav-icon">🧯</span><span>错题复盘</span>
     </div>
+    <div class="nav-section-label">画像与报告</div>
     <div class="nav-item" data-page="learning-report" id="nav-learning-report">
       <span class="nav-icon">📊</span><span>学习报告</span>
     </div>
     <div class="nav-item" data-page="profile" id="nav-profile">
       <span class="nav-icon">🎓</span><span>学习画像</span>
     </div>
-    <div class="nav-item" data-page="settings" id="nav-settings">
-      <span class="nav-icon">⚙️</span><span>账户与设置</span>
+    <div class="nav-item" data-page="learning-path" id="nav-learning-path">
+      <span class="nav-icon">🗺️</span><span>学习路径</span>
+    </div>
+    <div class="nav-section-label">课程资料</div>
+    <div class="nav-item" data-page="courses" id="nav-courses">
+      <span class="nav-icon">📚</span><span>课程中心</span>
     </div>
     <div class="nav-item" data-page="knowledge" id="nav-knowledge">
       <span class="nav-icon">🧠</span><span>课程资料库</span>
+    </div>
+    <div class="nav-section-label">设置</div>
+    <div class="nav-item" data-page="settings" id="nav-settings">
+      <span class="nav-icon">⚙️</span><span>模型与设置</span>
     </div>
   </nav>
   <div class="sidebar-footer" id="sidebar-footer">
@@ -98,6 +108,7 @@
             <button onclick="_quickGenerate('lecture_doc')">📄 生成讲义</button>
             <button onclick="_quickGenerate('ppt')">📊 生成PPT</button>
             <button onclick="_quickGenerate('study_plan')">🗺️ 学习路径</button>
+            <button onclick="_quickGenerate('video_script')">🎬 视频脚本</button>
           </div>
         </div>
       </div>
@@ -109,6 +120,7 @@
           <div class="tab-panel" id="artifact-lecture"><div class="empty-state"><div class="empty-icon">📄</div><p>讲义文档展示区</p></div></div>
           <div class="tab-panel" id="artifact-ppt"><div class="empty-state"><div class="empty-icon">📊</div><p>PPT预习区</p></div></div>
           <div class="tab-panel" id="artifact-study_plan"><div class="empty-state"><div class="empty-icon">🗺️</div><p>学习路径展示区</p></div></div>
+          <div class="tab-panel" id="artifact-video_script"><div class="empty-state"><div class="empty-icon">🎬</div><p>视频脚本展示区</p></div></div>
         </div>
       </div>
         <div class="citations-panel" id="citations-panel">

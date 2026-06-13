@@ -38,6 +38,77 @@ logger = logging.getLogger(__name__)
 
 MAX_RESOURCE_TOP_K = 8
 
+
+def _analysis_for_topic(topic: str, profile: dict | None = None) -> dict[str, Any]:
+    text = str(topic or "")
+    if "连续" in text:
+        key = "连续"
+    elif "微积分" in text:
+        key = "微积分"
+    elif "定积分" in text or "积分" in text:
+        key = "积分"
+    elif "导数" in text or "微分" in text:
+        key = "导数"
+    elif "极限" in text:
+        key = "极限"
+    else:
+        key = "微积分"
+    data = {
+        "极限": {
+            "label": "函数极限", "chapter": "第一章 函数与极限",
+            "intuition": "极限看自变量趋近过程中的函数值趋势，不等于某一点函数值。",
+            "definition": "x 趋近 x0 时 f(x) 任意接近 A，则 A 是极限。",
+            "conditions": ["判断趋近方向", "比较左右极限", "0/0 型先化简"],
+            "steps": ["代入判断未定式", "化简表达式", "看左右趋势", "写结论"],
+            "mistakes": ["函数值等于极限", "忽略左右极限", "把 0/0 当答案"],
+            "example": "求 lim(x->1)(x^2-1)/(x-1)",
+            "solution": ["代入得 0/0", "分解 x^2-1", "约去 x-1", "得到极限 2"],
+        },
+        "导数": {
+            "label": "导数定义", "chapter": "第二章 导数与微分",
+            "intuition": "导数是割线逼近切线后的瞬时变化率。",
+            "definition": "f'(x0)=lim(Δx->0)[f(x0+Δx)-f(x0)]/Δx。",
+            "conditions": ["写出差商", "让 Δx 趋近 0", "差商极限存在"],
+            "steps": ["建立平均变化率", "化简差商", "取极限", "解释切线斜率"],
+            "mistakes": ["忘记取极限", "把导数当普通除法", "混淆可导与连续"],
+            "example": "用定义求 f(x)=x^2 在 x=3 处导数",
+            "solution": ["写差商", "展开化简", "取 Δx->0", "得到 6"],
+        },
+        "积分": {
+            "label": "定积分的几何意义", "chapter": "第四、五章 不定积分与定积分",
+            "intuition": "定积分把区间切成小段，把小矩形面积累加后取极限。",
+            "definition": "定积分是分割、取样、求和、取极限的区间累积量。",
+            "conditions": ["区分定积分和不定积分", "看清上下限", "解释面积或累积意义"],
+            "steps": ["确定累积对象", "画区间图像", "选择公式", "代入上下限"],
+            "mistakes": ["定积分写 +C", "漏看上下限", "换元后上下限不同步"],
+            "example": "解释并计算 ∫_0^2 x dx",
+            "solution": ["画 y=x", "识别三角形面积", "1/2*2*2", "结果为 2"],
+        },
+        "连续": {
+            "label": "函数连续", "chapter": "第一章 函数与极限",
+            "intuition": "连续要求点上的函数值和靠近该点的趋势对得上。",
+            "definition": "f(x0) 有定义、极限存在且等于 f(x0)，则连续。",
+            "conditions": ["函数值存在", "极限存在", "二者相等"],
+            "steps": ["算函数值", "算左右极限", "比较三者", "判断间断点"],
+            "mistakes": ["只看函数值", "不比较极限与函数值", "混淆连续和可导"],
+            "example": "判断 f(x)=x^2 在 x=1 处连续",
+            "solution": ["f(1)=1", "极限为 1", "二者相等", "连续"],
+        },
+        "微积分": {
+            "label": "微积分整体理解", "chapter": "第一至第五章 微积分核心工具",
+            "intuition": "微分研究局部变化，积分研究整体累积。",
+            "definition": "导数刻画局部变化率，积分刻画区间总量，二者由基本公式联系。",
+            "conditions": ["判断局部还是整体", "选择导数或积分", "解释实际含义"],
+            "steps": ["识别对象", "判断变化或累积", "选择工具", "解释结果"],
+            "mistakes": ["割裂导数和积分", "只背公式", "不问研究对象"],
+            "example": "速度函数如何解释加速度和路程",
+            "solution": ["速度导数是加速度", "速度积分是路程", "局部与整体联系", "形成建模工具"],
+        },
+    }[key]
+    weak = (profile or {}).get("weak_points") or "待识别"
+    data["profile_hint"] = f"画像薄弱点：{weak}"
+    return data
+
 # ── Topic-specific Mock templates ──────────────────────────────────────────────
 
 # Known topic patterns → mock resource templates
@@ -615,24 +686,26 @@ def _generate_mindmap_json(
         except Exception as e:
             logger.warning("LLM mindmap JSON parse failed: %s", str(e)[:80])
 
-    # Fallback to Mock
-    topic_key = _extract_topic_key(topic)
-    if topic_key and topic_key in _MOCK_TOPICS:
-        return _MOCK_TOPICS[topic_key]["mindmap"]
-
-    # Generic fallback
-    summary = _chunks_to_summary(chunks, max_len=500)
-    keywords = _extract_keywords(summary, max_words=8)
-    if not keywords:
-        keywords = ["基础概念", "核心原理", "应用方法"]
-    nodes = [
-        MindMapNode(id=f"node_{i}", label=kw, children=[
-            MindMapNode(id=f"node_{i}_1", label="定义与概念"),
-            MindMapNode(id=f"node_{i}_2", label="关键要点"),
-        ])
-        for i, kw in enumerate(keywords)
+    analysis = _analysis_for_topic(topic, profile)
+    branch_map = [
+        ("教材位置", [analysis["chapter"], *analysis["conditions"][:2]]),
+        ("核心问题", [analysis["intuition"], analysis["definition"]]),
+        ("概念直觉", [analysis["intuition"], analysis["profile_hint"]]),
+        ("正式定义", [analysis["definition"], *analysis["conditions"][:2]]),
+        ("条件判定", analysis["conditions"]),
+        ("方法路径", analysis["steps"]),
+        ("易错点", analysis["mistakes"]),
+        ("例题入口", [analysis["example"], *analysis["solution"][:2]]),
+        ("复习建议", ["先看讲义", "再看导图", "完成三道诊断题"]),
     ]
-    return MindMapJSON(title=topic, nodes=nodes)
+    nodes = [
+        MindMapNode(id=f"node_{i}", label=title[:40], children=[
+            MindMapNode(id=f"node_{i}_{j}", label=str(child)[:40])
+            for j, child in enumerate(children[:4])
+        ])
+        for i, (title, children) in enumerate(branch_map)
+    ]
+    return MindMapJSON(title=analysis["label"], nodes=nodes)
 
 
 # ── Reading / video script generation ──────────────────────────────────────────
@@ -755,23 +828,20 @@ def _generate_lecture_doc_json(
         except Exception as e:
             logger.warning("LLM lecture JSON parse failed: %s", str(e)[:80])
 
-    # Fallback to Mock
-    topic_key = _extract_topic_key(topic)
-    if topic_key and topic_key in _MOCK_TOPICS:
-        return _MOCK_TOPICS[topic_key]["lecture"]
-
-    # Generic fallback
-    summary = _chunks_to_summary(chunks, max_len=1000)
+    analysis = _analysis_for_topic(topic, profile)
     difficulty = profile.get("knowledge_level", "intermediate") if profile else "intermediate"
-    sections = [LectureSection(heading=f"{topic} — 概述", content=summary)] if summary else [
-        LectureSection(heading="课程概述",
-                      content=f"本课程讨论 {topic} 相关的核心知识点。请参考课程教材获取详细内容。")
+    sections = [
+        LectureSection(heading="教材定位", content=f"{analysis['chapter']}。核心问题：{analysis['intuition']}"),
+        LectureSection(heading="为什么难", content=f"容易混淆：{'；'.join(analysis['mistakes'])}。{analysis['profile_hint']}"),
+        LectureSection(heading="人话解释", content=analysis["intuition"]),
+        LectureSection(heading="正式定义拆解", content=f"{analysis['definition']}\n符号重点和条件：{'；'.join(analysis['conditions'])}"),
+        LectureSection(heading="条件检查清单", content="\n".join(f"- {x}" for x in analysis["conditions"])),
+        LectureSection(heading="典型例题完整拆解", content=f"题目：{analysis['example']}\n" + "\n".join(f"{i+1}. {x}" for i, x in enumerate(analysis["solution"]))),
+        LectureSection(heading="常见错误与纠正", content="\n".join(f"- 错误：{x}\n  纠正：回到定义条件，写出这一步的依据。" for x in analysis["mistakes"])),
+        LectureSection(heading="课后 15 分钟复习安排", content="3 分钟复述概念；5 分钟重做例题；5 分钟完成诊断题；2 分钟标记错因和下一步资源。"),
+        LectureSection(heading="自测清单", content="能说清研究对象；能列出条件；能解释例题步骤；能辨析相近概念；能归因错题。"),
     ]
-    sections.append(LectureSection(
-        heading="学习建议",
-        content="建议结合教材和练习题，从基础概念入手，逐步深入理解。",
-    ))
-    return LectureDocJSON(title=f"{topic}讲解", difficulty=difficulty, sections=sections)
+    return LectureDocJSON(title=f"{analysis['label']}老师讲课式讲义", difficulty=difficulty, sections=sections)
 
 
 # ── Quiz generation ────────────────────────────────────────────────────────────
@@ -817,19 +887,28 @@ def _generate_quiz_json(
         except Exception as e:
             logger.warning("LLM quiz JSON parse failed: %s", str(e)[:80])
 
-    # Fallback to Mock
-    topic_key = _extract_topic_key(topic)
-    if topic_key and topic_key in _MOCK_TOPICS:
-        return _MOCK_TOPICS[topic_key]["quiz"]
-
-    # Generic fallback
-    items = [QuizItem(
-        question=f"关于 {topic}，以下哪项描述最准确？",
-        options=["选项 A", "选项 B", "选项 C", "以上都不是"],
-        answer=0,
-        explanation=f"请参考课程资料获取 {topic} 的准确定义。当前为通用示例题目。",
-    )]
-    return QuizJSON(title=f"{topic}自测", items=items)
+    analysis = _analysis_for_topic(topic, profile)
+    items = [
+        QuizItem(
+            question=f"【概念辨析】关于{analysis['label']}，哪项说法正确？",
+            options=[analysis["intuition"], analysis["mistakes"][0], "只需背公式不看条件", "只看最终答案即可"],
+            answer=0,
+            explanation=f"该题考察核心直觉：{analysis['intuition']}。错因通常是{analysis['mistakes'][0]}。",
+        ),
+        QuizItem(
+            question=f"【条件判断】处理{analysis['label']}题目前应先检查什么？",
+            options=[analysis["conditions"][0], analysis["mistakes"][1] if len(analysis["mistakes"]) > 1 else "直接套公式", "先写答案", "忽略题干限制"],
+            answer=0,
+            explanation=f"方法是否可用取决于条件。先检查：{analysis['conditions'][0]}。",
+        ),
+        QuizItem(
+            question=f"【基础应用】{analysis['example']} 的第一步是什么？",
+            options=[analysis["solution"][0], analysis["mistakes"][2] if len(analysis["mistakes"]) > 2 else "跳过条件", "只写结论", "不解释依据"],
+            answer=0,
+            explanation=f"基础题先从第一步依据开始：{analysis['solution'][0]}。",
+        ),
+    ]
+    return QuizJSON(title=f"{analysis['label']}诊断练习", items=items)
 
 
 # ── Main pipeline ──────────────────────────────────────────────────────────────

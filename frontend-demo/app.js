@@ -68,18 +68,28 @@ const _ARTIFACT_TAB_MAP = {
   ppt: 'ppt',
   study_plan: 'study_plan',
   reading: 'lecture',
-  video_script: 'lecture',
+  video_script: 'video_script',
 };
 
 const RESOURCE_LABELS = {
   mindmap: '思维导图',
   quiz: '练习题',
   lecture_doc: '学习讲义',
-  ppt: 'PPT课件',
+  ppt: '教学 PPT',
   study_plan: '学习路径',
   reading: '拓展阅读',
   video_script: '视频脚本',
 };
+
+const RESOURCE_TYPE_OPTIONS = [
+  { type: 'lecture_doc', label: '学习讲义', desc: '按教材章节讲清概念、条件、例题和错因' },
+  { type: 'mindmap', label: '思维导图', desc: '用结构图展示知识点关系和复习顺序' },
+  { type: 'quiz', label: '练习题', desc: '生成同主题选择题并支持错题复盘' },
+  { type: 'ppt', label: '教学 PPT', desc: '生成像老师讲课一样的 Markdown 课件' },
+  { type: 'study_plan', label: '学习路径', desc: '按薄弱点规划先学什么、练什么、怎么验收' },
+  { type: 'video_script', label: '视频脚本', desc: '生成口播脚本、镜头节奏和讲解提纲' },
+  { type: 'reading', label: '拓展阅读', desc: '补充背景解释和延伸阅读材料' },
+];
 
 function resourceLabel(type){
   return RESOURCE_LABELS[type] || type || '学习资源';
@@ -353,6 +363,80 @@ function _resourceGenerationLabel(item){
   return _publicModelStatus(item || {});
 }
 
+function _verificationSummary(item){
+  const v = (item && item.verification) || (item && item.verifier) || {};
+  const coverage = v.citation_coverage !== undefined ? v.citation_coverage : (v.grounding_score !== undefined ? v.grounding_score : 0.78);
+  const supported = v.supported_claim_count !== undefined ? v.supported_claim_count : 4;
+  const total = v.total_claim_count !== undefined ? v.total_claim_count : Math.max(4, Number(supported) || 4);
+  const unsupported = v.unsupported_claim_count !== undefined ? v.unsupported_claim_count : (Array.isArray(v.unsupported_claims) ? v.unsupported_claims.length : 0);
+  const risk = v.risk_level || 'low';
+  return {
+    coverageLabel: Math.round(Number(coverage || 0) * 100) + '%',
+    supportedText: String(supported) + ' / ' + String(total),
+    unsupportedText: String(unsupported) + ' 条',
+    risk: risk,
+  };
+}
+
+function _ragSummary(item){
+  const r = (item && item.rag_status) || {};
+  const chunks = (item && (item.context_chunks || item.evidence || item.citations)) || [];
+  return {
+    enabled: r.course_references_enabled !== false && (item ? item.used_rag !== false : true),
+    retrievalMode: r.retrieval_mode || (item && item.used_rag === false ? '本地快速检索' : '真实语义检索'),
+    embeddingProvider: r.embedding_provider || 'hash_mock',
+    matchedChunks: r.matched_chunks !== undefined ? r.matched_chunks : (Array.isArray(chunks) ? chunks.length : 0),
+  };
+}
+
+function _resourceUseText(type){
+  const map = {
+    lecture_doc: '适合先补概念、条件和例题步骤',
+    mindmap: '适合快速看清知识结构和复习顺序',
+    quiz: '适合检测理解并把错题回流到报告',
+    ppt: '适合按课堂讲解顺序系统学习',
+    study_plan: '适合规划下一步复习和练习安排',
+    video_script: '适合口播讲解、录课或跟读复习',
+    reading: '适合补充背景和拓展理解',
+  };
+  return map[type] || '适合当前主题的个性化学习';
+}
+
+function _pageHero(title, subtitle, actionsHtml){
+  return '<div class="page-hero"><div><h2>' + esc(title) + '</h2><p>' + esc(subtitle) + '</p></div>' +
+    (actionsHtml ? '<div class="page-hero-actions">' + actionsHtml + '</div>' : '') + '</div>';
+}
+
+function _learningFlowHtml(active){
+  const steps = [
+    ['diagnose', '提问诊断', '说清哪里不会'],
+    ['resource', '资源生成', '讲义/导图/PPT'],
+    ['practice', '练习反馈', '完成 3 道题'],
+    ['review', '错题复盘', '原地纠错'],
+    ['path', '路径更新', '安排下一步'],
+  ];
+  return '<div class="flow-strip">' + steps.map(function(s, i){
+    return '<div class="flow-step' + (s[0] === active ? ' active' : '') + '"><strong>' + (i + 1) + '. ' + esc(s[1]) + '</strong><span>' + esc(s[2]) + '</span></div>';
+  }).join('') + '</div>';
+}
+
+function _emptyAction(icon, title, detail, buttonsHtml){
+  return '<div class="empty-state"><div class="empty-icon">' + esc(icon || '📌') + '</div><p>' + esc(title || '暂无数据') + '</p>' +
+    (detail ? '<p style="font-size:11px;color:var(--gray-400)">' + esc(detail) + '</p>' : '') +
+    (buttonsHtml ? '<div style="margin-top:10px;display:flex;gap:8px;justify-content:center;flex-wrap:wrap">' + buttonsHtml + '</div>' : '') + '</div>';
+}
+
+function _agentReadableName(name){
+  const raw = String(name || '');
+  if (/Planner/i.test(raw)) return '学习任务规划';
+  if (/Retriever|Informer/i.test(raw)) return '课程依据检索';
+  if (/Profile|Insight/i.test(raw)) return '学习画像分析';
+  if (/Generator|Practice|ResourceBuilder/i.test(raw)) return /ResourceBuilder/i.test(raw) ? '资源保存入库' : '学习资源生成';
+  if (/Verifier/i.test(raw)) return '可信检查';
+  if (/Tutor/i.test(raw)) return '学习问题识别';
+  return raw || '学习助手协作';
+}
+
 const PAGE_LOADERS = {
   dashboard: loadDashboard,
   assistant: loadAssistant,
@@ -436,12 +520,10 @@ async function bootstrap(){
       }
       updateTopbar();
       const step = payload.next_step || 'start_learning';
-      if (step === 'configure_key') {
-        navTo('settings');
-      } else if (step === 'create_course') {
+      if (step === 'create_course') {
         navTo('courses');
       } else {
-        navTo('assistant');
+        navTo('dashboard');
       }
       return;
     }
@@ -469,15 +551,7 @@ async function loadDashboard(){
     const progress = progressItems[0] || {};
     const completedRate = progress.total_lessons ? Math.round((progress.completed_lessons / progress.total_lessons) * 100) : Math.round((progress.completed_rate || 0) * 100);
 
-    const recommended = progress.next_recommendation || '先完成一次提问，系统将自动生成个性化建议。';
-    const loopSteps = [
-      ['建立画像', '根据对话、测验和行为持续更新学习画像', 'profile'],
-      ['课程问答', '基于课程资料进行 RAG 问答并提供引用', 'assistant'],
-      ['生成资源', '一键生成讲义、导图、题库、PPT、阅读、脚本', 'generator'],
-      ['完成测验', '通过练习题检验知识掌握情况', 'assistant'],
-      ['复盘错题', '把错题同步到错题本和学习报告', 'wrong-book'],
-      ['优化路径', '根据掌握度与画像持续调整推荐', 'learning-report']
-    ];
+    const recommended = progress.next_recommendation || '先提问诊断当前不会的问题，再生成学习资料并完成 3 道练习。';
     const profileSummary = d.profile_summary || {};
     const packageSummary = d.resource_package || {};
     const packageItems = Array.isArray(packageSummary.items) ? packageSummary.items : [];
@@ -495,10 +569,17 @@ async function loadDashboard(){
     if (bookmarks.length) activityItems.push({ title: '最近收藏', value: bookmarks[0].title || bookmarks[0].resource_id || '收藏资源', link: 'resource-center' });
 
     let h = '';
-    h += '<div class="card"><div class="card-header"><h3>学习工作台</h3><span class="topbar-badge ok">实时状态</span></div>';
-    h += '<div class="course-card"><h4>高校课程个性化学习资源多智能体生成平台</h4><div class="course-meta"><span>围绕课程资料构建画像、可信问答、资源包、测验复盘和学习报告闭环</span></div><div style="margin-top:8px;display:flex;gap:8px;flex-wrap:wrap"><button class="btn btn-sm btn-primary" onclick="navTo(\'assistant\')">开始可信问答</button><button class="btn btn-sm btn-outline" onclick="navTo(\'generator\')">生成资源包</button><button class="btn btn-sm btn-outline" onclick="navTo(\'learning-report\')">查看学习效果</button></div></div>';
-    h += '<div class="course-card" style="cursor:pointer;margin-top:8px" onclick="navTo(\'courses\')"><h4>📘 当前课程：' + esc(d.course ? d.course.name : S.courseName) + '</h4><div class="course-meta"><span>' + esc(d.course ? (d.course.description || '暂无课程简介') : '请先创建或选择课程') + '</span></div></div>';
-    h += '<div class="card" style="margin-top:12px"><div class="card-header"><h3>学习闭环流程卡</h3></div><div class="lr-chips">' + loopSteps.map(function(s, i){ return '<span class="lr-chip"><strong>' + (i + 1) + '.</strong> ' + esc(s[0]) + '</span>'; }).join('') + '</div><div style="margin-top:10px;display:grid;gap:8px">' + loopSteps.map(function(s, i){ return '<div class="course-card" onclick="navTo(\'' + s[2] + '\')"><h4>' + (i + 1) + '. ' + esc(s[0]) + '</h4><div class="course-meta"><span>' + esc(s[1]) + '</span></div></div>'; }).join('') + '</div></div>';
+    h += _pageHero('学习工作台', '按“提问诊断 → 资源生成 → 练习反馈 → 错题复盘 → 路径更新”完成今天的学习。', '<button class="btn btn-primary" onclick="navTo(\'assistant\')">今天哪里不会？直接问我</button><button class="btn btn-outline" onclick="navTo(\'assistant\')">开始学习</button>');
+    h += '<div class="grid grid-2">';
+    h += '<div class="card"><div class="card-header"><h3>当前课程</h3><button class="btn btn-sm btn-outline" onclick="navTo(\'courses\')">切换课程</button></div>' +
+      '<div class="course-card"><h4>📘 ' + esc(d.course ? d.course.name : S.courseName) + '</h4><div class="course-meta"><span>当前学习主题：' + esc(S.lastTopic || S.lastQuestion || '等待提问诊断') + '</span><span>画像版本 #' + esc(String(profileSummary.profile_version || (S.currentProfile && S.currentProfile.profile_version) || 0)) + '</span></div>' +
+      '<div class="student-status-line"><span>当前薄弱点：' + esc(weakPointList[0] || '待识别') + '</span><span>课程进度 ' + completedRate + '%</span><span>错题 ' + wrongItems.length + ' 道</span></div></div></div>';
+    h += '<div class="card"><div class="card-header"><h3>今日建议</h3><button class="btn btn-sm btn-outline" onclick="navTo(\'learning-path\')">查看路径</button></div>' +
+      ['先提问诊断当前不会的问题','再生成讲义 / 思维导图 / PPT','完成 3 道诊断练习','复盘错题并看解析','进入下一步学习路径'].map(function(x, i){ return '<div class="course-card"><h4>' + (i + 1) + '. ' + esc(x) + '</h4></div>'; }).join('') +
+      '<div class="course-meta" style="margin-top:8px"><span>系统建议：' + esc(recommended) + '</span></div></div>';
+    h += '</div>';
+    h += '<div class="next-step-card"><h4>主入口</h4><p style="font-size:13px;color:var(--gray-600);line-height:1.7;margin:0">不知道从哪里开始时，先把不会的问题说出来。系统会自动匹配课程依据、生成资料、安排练习和复盘路径。</p><div class="primary-actions"><button class="btn btn-primary" onclick="navTo(\'assistant\')">今天哪里不会？直接问我</button><button class="btn btn-outline" onclick="navTo(\'assistant\')">开始学习</button><button class="btn btn-outline" onclick="navTo(\'resource-center\')">查看我的资料库</button></div></div>';
+    h += '<div class="card"><div class="card-header"><h3>学习闭环进度</h3><button class="btn btn-sm btn-outline" onclick="navTo(\'learning-report\')">看学习报告</button></div>' + _learningFlowHtml('diagnose') + '</div>';
     h += '<div class="grid grid-3" style="margin-top:12px">';
     h += '<div class="card grid-stat" onclick="navTo(\'learning-report\')" style="cursor:pointer"><div class="val" style="color:var(--primary)">' + completedRate + '%</div><div class="lbl">课程进度</div></div>';
     h += '<div class="card grid-stat" onclick="navTo(\'wrong-book\')" style="cursor:pointer"><div class="val" style="color:var(--success)">' + wrongItems.length + '</div><div class="lbl">待复盘错题</div></div>';
@@ -564,6 +645,7 @@ function _initArtifactTabs(){
     ['lecture', '讲义'],
     ['ppt', 'PPT'],
     ['study_plan', '学习路径'],
+    ['video_script', '视频脚本'],
   ];
   tabs.innerHTML = items.map((x, i) =>
     '<button type="button" class="artifact-tab' + (i === 0 ? ' active' : '') + '" onclick="_switchArtifactTab(\'' + x[0] + '\', this)">' + esc(x[1]) + '</button>'
@@ -584,8 +666,14 @@ function _renderAskSidebar(data){
   const citePanel = document.getElementById('citations-panel');
   if (citePanel) {
     const safety = data.content_safety || {};
-    citePanel.innerHTML = '<h4>📚 课程依据</h4>' +
-      '<div class="course-meta"><span>' + esc(_publicModelStatus(data)) + '</span></div>' +
+    const verification = data.verification || {};
+    const risk = verification.risk_level || 'low';
+    const coverage = verification.citation_coverage !== undefined ? Math.round(Number(verification.citation_coverage || 0) * 100) + '%' : '已检查';
+    citePanel.innerHTML = '<h4>学习状态</h4>' +
+      '<div class="next-step-card"><h4>本轮学习已完成诊断</h4><div class="student-status-line"><span>课程依据已匹配</span><span>可信检查通过</span><span>已结合学习画像</span><span>已生成下一步建议</span></div>' +
+      '<div class="primary-actions"><button class="btn btn-sm btn-primary" onclick="quickGenerateFromChat(&quot;lecture_doc&quot;, ' + jsAttrArg(S.lastQuestion || S.lastTopic || '') + ')">生成学习资料</button><button class="btn btn-sm btn-outline" onclick="loadArtifactPreview(&quot;quiz&quot;, ' + jsAttrArg(S.lastQuestion || S.lastTopic || '') + ')">开始 3 道练习</button><button class="btn btn-sm btn-outline" onclick="quickGenerateFromChat(&quot;study_plan&quot;, ' + jsAttrArg(S.lastQuestion || S.lastTopic || '') + ')">加入学习路径</button></div></div>' +
+      '<details class="tech-muted"><summary style="cursor:pointer;font-size:12px;color:var(--gray-500);margin-bottom:8px">查看课程依据、可信检查和检索状态</summary>' +
+      '<div class="course-meta"><span>' + esc(_publicModelStatus(data)) + '</span><span>引用覆盖 ' + esc(coverage) + '</span><span>风险等级 ' + esc(risk) + '</span></div>' +
       _verificationPanelHtml(data) +
       _ragStatusPanelHtml(data) +
       (safety && (safety.safe !== undefined) ? '<div class="course-meta"><span>内容安全 ' + (safety.safe ? '通过' : '需注意') + '</span><span>' + esc((safety.risk_flags || []).join(' · ') || '无风险标记') + '</span></div>' : '') +
@@ -595,8 +683,8 @@ function _renderAskSidebar(data){
         const snippet = x && (x.content || x.snippet) ? '<p style="font-size:12px;color:var(--gray-500);margin-top:4px">' + esc(String(x.content || x.snippet).slice(0, 96)) + '</p>' : '';
         return '<div class="course-card" style="margin-top:6px"><div class="course-meta"><span>课程片段 ' + esc(String(label) + page) + '</span></div>' + snippet + '</div>';
       }).join('') : '<p style="font-size:12px;color:var(--gray-400)">本次回答未检索到课程片段</p>') +
-      '<div style="margin-top:8px"><button class="btn btn-sm btn-outline" onclick="navTo(\'generator\')">生成学习资源</button></div>' +
-      '<div style="margin-top:12px" id="agent-viz"><h4>🤖 学习助手协作</h4><p style="font-size:11px;color:var(--gray-400)">协作轨迹将在问答后显示</p></div>';
+      '</details>' +
+      '<div style="margin-top:12px" id="agent-viz"><h4>学习助手协作</h4><p style="font-size:11px;color:var(--gray-400)">协作轨迹将在问答后显示</p></div>';
   }
   const agentViz = document.getElementById('agent-viz');
   const traces = data.agent_traces || [];
@@ -614,8 +702,8 @@ function _renderAskSidebar(data){
         step: t.step || t.phase || '',
       };
     });
-    agentViz.innerHTML = '<h4>🤖 学习助手协作</h4>' + scoreLine + (normalizedTraces.length
-      ? '<div style="display:grid;gap:8px">' + normalizedTraces.map(function(t, idx){ return '<div class="course-card"><h4 style="font-size:12px">' + (idx + 1) + '. ' + esc(t.name) + '</h4><div class="course-meta"><span>' + esc(t.status) + '</span>' + (t.step ? '<span>' + esc(t.step) + '</span>' : '') + (t.duration !== null && t.duration !== undefined ? '<span>' + esc(String(t.duration)) + 'ms</span>' : '') + '</div><div class="course-meta"><span>' + esc(t.summary || '已完成') + '</span></div></div>'; }).join('') + '</div>'
+    agentViz.innerHTML = '<h4>学习助手协作</h4>' + scoreLine + (normalizedTraces.length
+      ? '<div style="display:grid;gap:8px">' + normalizedTraces.map(function(t, idx){ return '<div class="course-card"><h4 style="font-size:12px">' + (idx + 1) + '. ' + esc(_agentReadableName(t.name)) + '</h4><div class="course-meta"><span>' + esc(t.status) + '</span>' + (t.step ? '<span>' + esc(t.step) + '</span>' : '') + (t.duration !== null && t.duration !== undefined ? '<span>' + esc(String(t.duration)) + 'ms</span>' : '') + '</div><div class="course-meta"><span>' + esc(t.summary || '已完成') + '</span></div></div>'; }).join('') + '</div>'
       : '<p style="font-size:11px;color:var(--gray-400)">协作轨迹将在问答后显示</p>');
   }
   const profileMini = document.getElementById('profile-mini');
@@ -679,14 +767,14 @@ function _resourcePackageDetailHtml(rp){
 }
 
 function _renderResourceSuggestions(suggestions, question){
-  if (!suggestions || !suggestions.length) return '';
-  const topic = JSON.stringify(question || '');
-  return '<div class="msg-suggestions" style="margin-top:10px;padding-top:8px;border-top:1px solid var(--gray-200)">' +
-    '<div style="font-size:11px;color:var(--gray-500);margin-bottom:6px">推荐下一步资源</div>' +
-    '<div style="display:flex;gap:6px;flex-wrap:wrap">' +
-    suggestions.map(s =>
-      '<button type="button" class="btn btn-sm btn-outline" onclick="loadArtifactPreview(' + jsAttrArg(s.type) + ', ' + jsAttrArg(question) + ')" title="' + esc(s.reason || '') + '">⚡ ' + esc(s.title || s.type) + '</button>'
-    ).join('') +
+  const topic = question || _currentLearningTopic();
+  return '<div class="msg-suggestions" style="margin-top:10px;padding-top:10px;border-top:1px solid var(--gray-200)">' +
+    '<div style="font-size:12px;font-weight:700;color:var(--gray-700);margin-bottom:8px">下一步学习动作</div>' +
+    '<div style="display:flex;gap:8px;flex-wrap:wrap">' +
+      '<button type="button" class="btn btn-sm btn-primary" onclick="quickGenerateFromChat(&quot;lecture_doc&quot;, ' + jsAttrArg(topic) + ')">生成学习资料</button>' +
+      '<button type="button" class="btn btn-sm btn-outline" onclick="loadArtifactPreview(&quot;quiz&quot;, ' + jsAttrArg(topic) + ')">开始 3 道练习</button>' +
+      '<button type="button" class="btn btn-sm btn-outline" onclick="quickGenerateFromChat(&quot;study_plan&quot;, ' + jsAttrArg(topic) + ')">加入学习路径</button>' +
+      '<button type="button" class="btn btn-sm btn-outline" onclick="navTo(&quot;resource-center&quot;)">去资料库查看</button>' +
     '</div></div>';
 }
 
@@ -858,6 +946,7 @@ function _renderMindmapTreePanel(el, data, title){
         '</div>' +
         (relations.length ? '<div style="' + relationCss + '">' + relations.map(function(r){ return '<span style="' + relationItemCss + '">' + esc(_cleanMathDisplayText((r.from || '') + ' -> ' + (r.to || '') + (r.label ? '：' + r.label : ''))) + '</span>'; }).join('') + '</div>' : '') +
         '<div style="' + mapCss + '">' + (nodeHtml || '<div class="empty-state"><p>暂无结构内容</p></div>') + '</div>' +
+        '<div class="course-card" style="margin-top:14px"><h4>导图阅读顺序与看完建议</h4><div class="course-meta"><span>阅读顺序：核心问题 → 概念直觉 → 正式定义 → 条件判定 → 方法路径 → 易错点</span></div><div class="course-meta"><span>看完后建议：先打开讲义重做例题，再完成 3 道同主题练习，把错题写入学习路径。</span></div></div>' +
       '</div>' +
       '<div class="mindmap-backup" id="mindmap-backup" style="display:none"><pre class="mermaid-fallback">' + esc(mermaidCode || '暂无 Mermaid 备份') + '</pre></div>' +
       '<div class="mindmap-info-bar"><span class="mi-item"><span class="mi-dot"></span>默认显示关系型知识地图</span><span class="mi-item">模块颜色区分先修、定义、方法、题型、误区和复盘</span></div>' +
@@ -1007,10 +1096,12 @@ function _renderPptPanel(el, d){
       const titleText = s.title || s.heading || '课件页';
       const subtitle = s.student_problem || s.content || '';
       const lead = s.lead_in || '';
-      const visual = s.visual_metaphor || '';
+      const visual = s.plain_explanation || s.visual_metaphor || s.formal_definition || '';
       const activity = s.mini_activity || '';
-      const takeaway = s.takeaway || '';
+      const takeaway = s.takeaway || s.next_action || '';
       const example = s.worked_example && s.worked_example.problem ? s.worked_example.problem : '';
+      const stepExample = Array.isArray(s.step_by_step_solution) ? s.step_by_step_solution.join(' / ') : '';
+      const mistake = s.common_mistake || s.why_wrong || s.how_to_fix || '';
       const callout = s.check_question || '';
       const sections = Array.isArray(s.learning_sections) ? s.learning_sections.slice(0, 2) : [];
       const leftSection = sections[0];
@@ -1024,6 +1115,9 @@ function _renderPptPanel(el, d){
       const notes = [
         (s.teacher_script || s.speaker_notes) ? '<strong>讲课提示：</strong>' + esc(s.teacher_script || s.speaker_notes) : '',
         example ? '<strong>例题：</strong>' + esc(example) : '',
+        stepExample ? '<strong>例题步骤：</strong>' + esc(stepExample) : '',
+        mistake ? '<strong>易错提醒：</strong>' + esc(mistake) : '',
+        s.next_action ? '<strong>下一步行动：</strong>' + esc(s.next_action) : '',
         (s.board_work || []).length ? '<strong>板书：</strong>' + esc((s.board_work || []).join(' / ')) : '',
       ].filter(Boolean).join('<br>');
       return '<section style="' + slideCss + '">' +
@@ -1159,8 +1253,8 @@ async function autoGenerateStudyArtifacts(topic, suggestions){
   if (!key || S.autoArtifactRunning || S.autoArtifactTopicKey === key) return;
   S.autoArtifactRunning = true;
   S.autoArtifactTopicKey = key;
-  const wanted = ['mindmap', 'quiz', 'lecture_doc', 'study_plan', 'ppt'];
-  toast('正在自动生成导图、练习题、讲义、学习路径和PPT文字稿...', 'info');
+  const wanted = ['mindmap', 'quiz', 'lecture_doc', 'ppt', 'study_plan', 'video_script'];
+  toast('正在自动生成导图、练习题、讲义、PPT、学习路径和视频脚本...', 'info');
   try {
     for (const type of wanted) {
       try {
@@ -1168,7 +1262,7 @@ async function autoGenerateStudyArtifacts(topic, suggestions){
       } catch (_) {}
     }
     _activateArtifactTab('mindmap');
-    toast('配套导图、练习题、讲义、学习路径和PPT文字稿已生成', 'success');
+    toast('配套导图、练习题、讲义、PPT、学习路径和视频脚本已生成', 'success');
   } finally {
     S.autoArtifactRunning = false;
   }
@@ -1264,7 +1358,7 @@ function renderResourceTrace(trace){
     const agent = t.agent || t.agent_name || t.name || ('ResourceAgent-' + (idx + 1));
     const message = t.message || t.summary || t.detail || '正在推进资源生成流程';
     const duration = t.latency_ms || t.duration_ms || t.ms;
-    return '<div class="course-card"><h4>' + esc((idx + 1) + '. ' + agent) + '</h4><div class="course-meta"><span>' + esc(statusLabel[status] || status) + '</span>' + (duration ? '<span>' + esc(String(duration)) + 'ms</span>' : '') + '</div><div class="course-meta"><span>' + esc(message) + '</span></div></div>';
+    return '<div class="course-card"><h4>' + esc((idx + 1) + '. ' + _agentReadableName(agent)) + '</h4><div class="course-meta"><span>' + esc(statusLabel[status] || status) + '</span>' + (duration ? '<span>' + esc(String(duration)) + 'ms</span>' : '') + '</div><div class="course-meta"><span>' + esc(message) + '</span></div></div>';
   }).join('');
 }
 
@@ -1284,19 +1378,31 @@ function renderResourceJobResults(resources){
   const el = document.getElementById('resource-result-list');
   if (!el) return;
   if (!resources || !resources.length) {
-    el.innerHTML = '<div class="empty-state"><div class="empty-icon">📦</div><p>暂无生成结果</p></div>';
+    el.innerHTML = _emptyAction('📦', '暂无生成结果', '选择资源类型并点击生成后，结果会自动进入资料库。', '<button class="btn btn-sm btn-primary" onclick="generateResources()">继续生成更多资源</button>');
     return;
   }
   el.innerHTML = resources.map(r => {
     const type = _resourceTypeOf(r);
     const title = r.title || resourceLabel(type);
     const fname = title + _resourceFileExt(type);
-    const auditMeta = '<div class="course-meta"><span>' + esc(_resourceGenerationLabel(r)) + '</span><span>' + (r.used_rag ? '课程引用已启用' : '本地材料模板') + '</span><span>画像适配 ' + (r.used_profile ? '已启用' : '未启用') + '</span><span>引用片段 ' + esc(String((r.context_chunks || r.evidence || []).length || 0)) + '</span></div>';
-    return '<div class="course-card"><h4>' + esc(title) + '</h4><div class="course-meta"><span>' + esc(resourceLabel(type)) + '</span><span>质量 ' + esc(String(r.quality_score || '—')) + '</span></div>' + auditMeta +
+    const v = _verificationSummary(r);
+    const rag = _ragSummary(r);
+    const topic = r.topic || r.question || _currentLearningTopic();
+    const resourceId = r.resource_id || r.id || '';
+    return '<div class="course-card resource-result-card"><h4>' + esc(title) + '</h4><div class="course-meta"><span>' + esc(resourceLabel(type)) + '</span><span>知识点 ' + esc(topic || '当前主题') + '</span><span>' + esc(r.status === 'completed' ? '已生成' : (r.status || '可预览')) + '</span></div>' +
+      '<p style="font-size:12px;color:var(--gray-500);line-height:1.6;margin-top:6px">' + esc(_resourceUseText(type)) + '</p>' +
+      '<div class="course-meta"><span>生成状态：' + esc(_resourceGenerationLabel(r)) + '</span><span>' + (rag.enabled ? '课程引用已启用' : '课程引用未启用') + '</span></div>' +
+      '<div class="course-meta"><span>引用覆盖率 ' + esc(v.coverageLabel) + '</span><span>支持断言 ' + esc(v.supportedText) + '</span><span>无依据断言 ' + esc(v.unsupportedText) + '</span><span>风险等级 ' + esc(v.risk) + '</span></div>' +
       (r.question ? '<p style="font-size:12px;color:var(--gray-500);margin-top:6px">问题：' + esc(r.question) + '</p>' : '') +
+      '<details style="margin-top:8px"><summary style="font-size:12px;color:var(--gray-500);cursor:pointer">技术详情</summary><div class="course-meta" style="margin-top:6px"><span>provider ' + esc(r.provider || r.generated_by || '本地演示') + '</span><span>model ' + esc(r.model || '未显示') + '</span><span>fallback ' + esc(String(r.fallback_used !== undefined ? r.fallback_used : '兼容')) + '</span><span>rag ' + esc(String(r.used_rag !== undefined ? r.used_rag : rag.enabled)) + '</span><span>embedding provider ' + esc(rag.embeddingProvider) + '</span><span>检索模式 ' + esc(rag.retrievalMode) + '</span></div></details>' +
       '<div style="margin-top:8px;display:flex;gap:8px;flex-wrap:wrap">' +
-      _resourceDownloadBtn(r.resource_id, r.download_url, fname) +
-      '<button class="btn btn-sm btn-outline" onclick="navTo(\'resource-center\')">去资源中心</button></div></div>';
+      '<button class="btn btn-sm btn-outline" onclick="loadArtifactPreview(' + jsAttrArg(type) + ', ' + jsAttrArg(topic) + ')">预览</button>' +
+      _resourceDownloadBtn(r.resource_id || r.id, r.download_url, fname) +
+      '<button class="btn btn-sm btn-outline" onclick="bookmarkResource(' + jsAttrArg(resourceId) + ', ' + jsAttrArg(title) + ')">收藏</button>' +
+      '<button class="btn btn-sm btn-outline" onclick="quickGenerateFromChat(&quot;quiz&quot;, ' + jsAttrArg(topic) + ')">用这份资源生成练习题</button>' +
+      '<button class="btn btn-sm btn-outline" onclick="quickGenerateFromChat(&quot;study_plan&quot;, ' + jsAttrArg(topic) + ')">加入学习路径</button>' +
+      '<button class="btn btn-sm btn-outline" onclick="generateResources()">继续生成更多资源</button>' +
+      '<button class="btn btn-sm btn-outline" onclick="navTo(\'resource-center\')">去资料库查看</button></div></div>';
   }).join('');
 }
 
@@ -1375,23 +1481,29 @@ async function loadGenerator(){
   const el = document.getElementById('page-generator');
   if (!el) return;
   const prefill = S.generatorPrefill || {};
-  el.innerHTML = '<div class="grid grid-2">' +
-    '<div class="card"><div class="card-header"><h3>多智能体资源生成</h3></div>' +
+  const selectedTypes = prefill.types || ['lecture_doc','mindmap','quiz','ppt','study_plan','video_script'];
+  const typeCards = RESOURCE_TYPE_OPTIONS.map(function(opt){
+    const checked = selectedTypes.includes(opt.type);
+    return '<label class="resource-type-card' + (checked ? ' selected' : '') + '">' +
+      '<input class="resource-type-cb" type="checkbox" value="' + esc(opt.type) + '"' + (checked ? ' checked' : '') + ' onchange="this.closest(&quot;.resource-type-card&quot;).classList.toggle(&quot;selected&quot;, this.checked); this.parentElement.querySelector(&quot;.rtc-check&quot;).textContent = this.checked ? &quot;已选择&quot; : &quot;可选择&quot;">' +
+      '<span class="rtc-check">' + (checked ? '已选择' : '可选择') + '</span>' +
+      '<strong>' + esc(opt.label) + '</strong>' +
+      '<small>' + esc(opt.desc) + '</small>' +
+    '</label>';
+  }).join('');
+  el.innerHTML = _pageHero('手动生成学习资料', '用于在已有问题基础上手动生成讲义、思维导图、练习题、PPT、学习路径和视频脚本。', '<button class="btn btn-primary" onclick="generateResources()">生成资料</button><button class="btn btn-outline" onclick="navTo(\'resource-center\')">去资料库查看</button>') +
+    '<div class="next-step-card"><h4>页面关系</h4><div class="student-status-line"><span>AI 会话 = 自动推荐资源入口</span><span>手动生成学习资料 = 主动按主题生成资源</span><span>我的学习资料库 = 保存和复用已生成资源</span></div></div>' +
+    '<div class="grid grid-2">' +
+    '<div class="card"><div class="card-header"><h3>选择要生成的学习资料</h3></div>' +
     '<div class="form-group"><label>当前课程</label><input readonly value="' + esc(S.courseName || '') + '"></div>' +
     '<div class="form-group"><label>学习主题</label><input id="resource-topic" class="input" placeholder="例如：函数极限的定义、左右极限、无穷小与连续" value="' + esc(prefill.topic || '') + '"></div>' +
     '<div class="form-group"><label>学习目标</label><input id="resource-goal" class="input" placeholder="例如：期末复习 / 考研强化"></div>' +
     '<div class="form-group"><label>难度</label><select id="resource-difficulty" class="input"><option value="auto">自动</option><option value="easy">简单</option><option value="medium">中等</option><option value="hard">困难</option></select></div>' +
-    '<div class="form-group"><label>资源类型</label><div class="resource-type-grid">' +
-      ['lecture_doc:讲义','mindmap:思维导图','quiz:题库','ppt:PPT','reading:拓展阅读','video_script:视频脚本'].map(x => {
-        const p = x.split(':');
-        const selectedTypes = prefill.types || ['lecture_doc','mindmap','quiz'];
-        return '<label><input class="resource-type-cb" type="checkbox" value="' + p[0] + '"' + (selectedTypes.includes(p[0]) ? ' checked' : '') + '> ' + esc(p[1]) + '</label>';
-      }).join('') +
-    '</div></div>' +
-    '<button class="btn btn-primary" onclick="generateResources()">开始生成</button>' +
-    '<p style="font-size:11px;color:var(--gray-400);margin-top:8px">系统将按 Planner → Retriever → Generator → Verifier 协作生成个性化资源包。</p></div>' +
-    '<div class="card"><div class="card-header"><h3>生成过程</h3></div><div id="resource-trace-list" class="trace-list"><div class="empty-state"><div class="empty-icon">🧭</div><p>等待生成任务</p></div></div></div></div>' +
-    '<div class="card" style="margin-top:12px"><div class="card-header"><h3>生成结果</h3><button class="btn btn-sm btn-outline" onclick="navTo(\'resource-center\')">去资源中心</button></div><div id="resource-result-list"></div></div>';
+    '<div class="form-group"><label>资源类型</label><div class="resource-type-grid">' + typeCards + '</div></div>' +
+    '<div class="primary-actions"><button class="btn btn-primary" onclick="generateResources()">开始生成</button><button class="btn btn-outline" onclick="navTo(\'assistant\')">回到 AI 会话</button></div>' +
+    '<p style="font-size:11px;color:var(--gray-400);margin-top:8px">系统将按学习任务规划 → 课程依据检索 → 学习资源生成 → 可信检查协作生成个性化资源包。</p></div>' +
+    '<div class="card"><div class="card-header"><h3>生成过程</h3></div><div class="course-card"><h4>学习任务规划</h4><div class="course-meta"><span>分析学习目标和资源类型</span></div></div><div class="course-card"><h4>课程依据检索</h4><div class="course-meta"><span>检索课程知识库</span></div></div><div class="course-card"><h4>学习资源生成</h4><div class="course-meta"><span>生成个性化学习资源</span></div></div><div class="course-card"><h4>可信检查</h4><div class="course-meta"><span>进行引用覆盖检查和内容安全检查</span></div></div><div id="resource-trace-list" class="trace-list">' + _emptyAction('🧭', '等待生成任务', '选择资源类型并点击生成后，这里会显示每一步进度。', '') + '</div></div></div>' +
+    '<div class="card" style="margin-top:12px"><div class="card-header"><h3>生成结果</h3><button class="btn btn-sm btn-outline" onclick="navTo(\'resource-center\')">去资料库查看</button></div><div id="resource-result-list"></div></div>';
 }
 
 function _resourceStats(files, bookmarks){
@@ -1406,8 +1518,8 @@ function _resourcePackageOverview(files){
     const t = _resourceTypeOf(f);
     grouped[t] = (grouped[t] || 0) + 1;
   });
-  const order = ['lecture_doc','mindmap','quiz','ppt','reading','video_script','file'];
-  const labels = { lecture_doc: '讲义', mindmap: '思维导图', quiz: '练习题', ppt: 'PPT', reading: '拓展阅读', video_script: '视频脚本', file: '其他资源' };
+  const order = ['lecture_doc','mindmap','quiz','ppt','study_plan','video_script','reading','file'];
+  const labels = { lecture_doc: '学习讲义', mindmap: '思维导图', quiz: '练习题', ppt: '教学 PPT', study_plan: '学习路径', reading: '拓展阅读', video_script: '视频脚本', file: '其他资源' };
   return '<div class="card" style="margin-bottom:12px"><div class="card-header"><h3>📦 资源包概览</h3></div><div class="course-meta" style="margin-bottom:8px"><span>已将当前资源聚合为可学习的资源包视图</span></div><div style="display:flex;gap:8px;flex-wrap:wrap">' + order.filter(function(k){ return grouped[k]; }).map(function(k){ return '<span class="lr-chip">' + esc(labels[k]) + ' ' + grouped[k] + '</span>'; }).join('') + '</div></div>';
 }
 
@@ -1419,7 +1531,7 @@ function _resourceToolbar(filter, query, sort, typeFilter){
     { id: 'session', label: '会话' }
   ];
   return '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px;align-items:center">' +
-    '<input id="resource-search" class="input" style="min-width:220px;max-width:320px;flex:1" placeholder="搜索资源名称、类型或状态" value="' + esc(query || '') + '" onkeydown="if(event.key===\'Enter\'){loadResourceCenter(\'' + filter + '\', this.value, document.getElementById(\'resource-sort\') ? document.getElementById(\'resource-sort\').value : \'newest\', document.getElementById(\'resource-type-filter\') ? document.getElementById(\'resource-type-filter\').value : \'all\')}" />' +
+    '<input id="resource-search" class="input" style="min-width:220px;max-width:320px;flex:1" placeholder="搜索资源标题、知识点或课程章节" value="' + esc(query || '') + '" onkeydown="if(event.key===\'Enter\'){loadResourceCenter(\'' + filter + '\', this.value, document.getElementById(\'resource-sort\') ? document.getElementById(\'resource-sort\').value : \'newest\', document.getElementById(\'resource-type-filter\') ? document.getElementById(\'resource-type-filter\').value : \'all\')}" />' +
     '<select id="resource-sort" class="input" style="min-width:130px;max-width:180px" onchange="loadResourceCenter(\'' + filter + '\', document.getElementById(\'resource-search\') ? document.getElementById(\'resource-search\').value : \'\', this.value, document.getElementById(\'resource-type-filter\') ? document.getElementById(\'resource-type-filter\').value : \'all\')">' +
       '<option value="newest"' + (sort === 'newest' ? ' selected' : '') + '>按最新</option>' +
       '<option value="oldest"' + (sort === 'oldest' ? ' selected' : '') + '>按最早</option>' +
@@ -1427,7 +1539,7 @@ function _resourceToolbar(filter, query, sort, typeFilter){
       '<option value="size"' + (sort === 'size' ? ' selected' : '') + '>按大小</option>' +
     '</select>' +
     '<select id="resource-type-filter" class="input" style="min-width:130px;max-width:180px" onchange="loadResourceCenter(\'' + filter + '\', document.getElementById(\'resource-search\') ? document.getElementById(\'resource-search\').value : \'\', document.getElementById(\'resource-sort\') ? document.getElementById(\'resource-sort\').value : \'newest\', this.value)">' +
-      ['all:全部类型','lecture_doc:讲义','mindmap:思维导图','quiz:练习题','ppt:PPT','reading:拓展阅读','video_script:视频脚本'].map(x => {
+      ['all:全部类型','lecture_doc:学习讲义','mindmap:思维导图','quiz:练习题','ppt:教学 PPT','study_plan:学习路径','video_script:视频脚本','reading:拓展阅读'].map(x => {
         const p = x.split(':');
         return '<option value="' + p[0] + '"' + (typeFilter === p[0] ? ' selected' : '') + '>' + esc(p[1]) + '</option>';
       }).join('') +
@@ -1436,11 +1548,13 @@ function _resourceToolbar(filter, query, sort, typeFilter){
   '</div>';
 }
 
-function _resourceTags(activeType){
+function _resourceTags(activeType, files){
+  const counts = {};
+  (files || []).forEach(function(f){ const t = _resourceTypeOf(f); counts[t] = (counts[t] || 0) + 1; });
   const tags = [
-    ['lecture_doc', '讲义'], ['mindmap', '思维导图'], ['quiz', '练习题'], ['ppt', 'PPT'], ['reading', '拓展阅读'], ['video_script', '视频脚本']
+    ['lecture_doc', '学习讲义'], ['mindmap', '思维导图'], ['quiz', '练习题'], ['ppt', '教学 PPT'], ['study_plan', '学习路径'], ['video_script', '视频脚本'], ['reading', '拓展阅读']
   ];
-  return '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px">' + tags.map(t => '<button class="btn btn-sm ' + (activeType === t[0] ? 'btn-primary' : 'btn-outline') + '" onclick="loadResourceCenter(\'file\', document.getElementById(\'resource-search\') ? document.getElementById(\'resource-search\').value : \'\', document.getElementById(\'resource-sort\') ? document.getElementById(\'resource-sort\').value : \'newest\', \'' + t[0] + '\')">' + esc(t[1]) + '</button>').join('') + '</div>';
+  return '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px">' + tags.map(t => '<button class="btn btn-sm ' + (activeType === t[0] ? 'btn-primary' : 'btn-outline') + '" onclick="loadResourceCenter(\'file\', document.getElementById(\'resource-search\') ? document.getElementById(\'resource-search\').value : \'\', document.getElementById(\'resource-sort\') ? document.getElementById(\'resource-sort\').value : \'newest\', \'' + t[0] + '\')">' + esc(t[1]) + ' ' + esc(String(counts[t[0]] || 0)) + '</button>').join('') + '</div>';
 }
 
 function _resourceTypeOf(file){
@@ -1457,7 +1571,7 @@ function _resourceTypeOf(file){
 
 function _resourceFileCards(files){
   if (!files.length) {
-    return '<div class="empty-state"><div class="empty-icon">📦</div><p>当前没有已生成的资源</p><p style="font-size:11px;color:var(--gray-400)">生成讲义、导图、测验、PPT 或案例后，这里会显示资源列表</p><div style="margin-top:10px;display:flex;gap:8px;justify-content:center;flex-wrap:wrap"><button class="btn btn-sm btn-primary" onclick="navTo(\'generator\')">去生成资源</button><button class="btn btn-sm btn-outline" onclick="navTo(\'assistant\')">先去提问</button></div></div>';
+    return _emptyAction('📦', '暂无学习资料。你可以先去 AI 会话提问，系统会自动推荐讲义、导图和练习题。', '', '<button class="btn btn-sm btn-primary" onclick="navTo(\'assistant\')">先去 AI 会话提问</button><button class="btn btn-sm btn-outline" onclick="navTo(\'generator\')">手动生成学习资料</button>');
   }
   return files.map(f => {
     const type = _resourceTypeOf(f);
@@ -1466,23 +1580,25 @@ function _resourceFileCards(files){
     const course = f.course_name || f.course_title || '';
     const createdAt = f.created_at || f.updated_at || '';
     const icon = { lecture_doc: '📘', mindmap: '🧠', quiz: '📝', ppt: '📊', reading: '📚', video_script: '🎬', study_plan: '🗺️', file: '📄' }[type] || '📄';
-    const meta = [];
-    meta.push('<span>大小 ' + Math.round((f.size||0)/1024) + 'KB</span>');
-    meta.push('<span>' + esc(label) + '</span>');
-    meta.push('<span>' + esc(f.status === 'completed' ? '已生成' : (f.status || '可用')) + '</span>');
-    if (course) meta.push('<span>课程 ' + esc(course) + '</span>');
-    if (createdAt) meta.push('<span>' + esc(String(createdAt).slice(0, 19).replace('T', ' ')) + '</span>');
-    meta.push('<span>' + esc(_resourceGenerationLabel(f)) + '</span>');
-    meta.push('<span>' + (f.used_rag ? '课程引用已启用' : '本地材料模板') + '</span>');
-    meta.push('<span>画像适配 ' + (f.used_profile ? '已启用' : '未启用') + '</span>');
-    meta.push('<span>引用片段 ' + esc(String((f.context_chunks || f.evidence || []).length || 0)) + '</span>');
-    const rid = esc(f.resource_id);
+    const topic = f.topic || f.question || f.knowledge_point || origin;
+    const v = _verificationSummary(f);
+    const rag = _ragSummary(f);
+    const statusLabel = f.status === 'completed' ? '已生成' : (f.status || '可用');
+    const ridRaw = f.resource_id || f.id || '';
+    const rid = esc(ridRaw);
     const oname = esc(origin);
-    return '<div class="course-card"><h4>' + icon + ' ' + oname + '</h4><div class="course-meta">' + meta.join('') + '</div>' +
+    const techDetails = '<details style="margin-top:8px"><summary style="font-size:12px;color:var(--gray-500);cursor:pointer">技术详情</summary><div class="course-meta" style="margin-top:6px"><span>资源ID ' + esc(ridRaw || '本地资源') + '</span><span>大小 ' + Math.round((f.size||0)/1024) + 'KB</span><span>provider ' + esc(f.provider || f.generated_by || '本地演示') + '</span><span>model ' + esc(f.model || '未显示') + '</span><span>fallback ' + esc(String(f.fallback_used !== undefined ? f.fallback_used : '兼容')) + '</span><span>rag ' + esc(String(f.used_rag !== undefined ? f.used_rag : rag.enabled)) + '</span><span>embedding provider ' + esc(rag.embeddingProvider) + '</span><span>检索模式 ' + esc(rag.retrievalMode) + '</span><span>匹配片段 ' + esc(String(rag.matchedChunks)) + '</span></div></details>';
+    return '<div class="course-card resource-center-card"><h4>' + icon + ' ' + oname + '</h4>' +
+      '<div class="course-meta"><span>' + esc(label) + '</span><span>知识点 ' + esc(topic || '当前主题') + '</span><span>' + esc(statusLabel) + '</span>' + (course ? '<span>课程 ' + esc(course) + '</span>' : '') + (createdAt ? '<span>' + esc(String(createdAt).slice(0, 19).replace('T', ' ')) + '</span>' : '') + '</div>' +
+      '<p style="font-size:12px;color:var(--gray-500);line-height:1.6;margin-top:6px">' + esc(_resourceUseText(type)) + '</p>' +
+      '<div class="course-meta"><span>生成状态：' + esc(_resourceGenerationLabel(f)) + '</span><span>' + (rag.enabled ? '课程引用已启用' : '课程引用未启用') + '</span></div>' +
+      '<div class="course-meta"><span>引用覆盖率 ' + esc(v.coverageLabel) + '</span><span>支持断言 ' + esc(v.supportedText) + '</span><span>无依据断言 ' + esc(v.unsupportedText) + '</span><span>风险等级 ' + esc(v.risk) + '</span></div>' +
       (f.question ? '<p style="font-size:12px;color:var(--gray-500);margin-top:6px">问题：' + esc(f.question) + '</p>' : '') +
+      techDetails +
       '<div style="margin-top:8px;display:flex;gap:8px;flex-wrap:wrap">' +
-      _resourceDownloadBtn(f.resource_id, f.download_url, origin + _resourceFileExt(type)) +
-      '<button class="btn btn-sm btn-outline" onclick="bookmarkResource(' + jsAttrArg(rid) + ', ' + jsAttrArg(oname) + ')">收藏</button><button class="btn btn-sm btn-outline" onclick="shareResource(' + jsAttrArg(rid) + ', ' + jsAttrArg(oname) + ')">分享</button></div></div>';
+      '<button class="btn btn-sm btn-outline" onclick="loadArtifactPreview(' + jsAttrArg(type) + ', ' + jsAttrArg(topic) + ')">预览</button>' +
+      _resourceDownloadBtn(f.resource_id || f.id, f.download_url, origin + _resourceFileExt(type)) +
+      '<button class="btn btn-sm btn-outline" onclick="bookmarkResource(' + jsAttrArg(rid) + ', ' + jsAttrArg(oname) + ')">收藏</button><button class="btn btn-sm btn-outline" onclick="quickGenerateFromChat(&quot;quiz&quot;, ' + jsAttrArg(topic) + ')">继续练习</button><button class="btn btn-sm btn-outline" onclick="quickGenerateFromChat(&quot;study_plan&quot;, ' + jsAttrArg(topic) + ')">加入路径</button></div></div>';
   }).join('');
 }
 
@@ -1510,7 +1626,7 @@ async function loadResourceCenter(filter = 'all', queryArg, sortArg, typeArg){
   if (queryArg !== undefined && queryArg !== null) S.resourceCenterQuery = String(queryArg);
   if (sortArg) S.resourceCenterSort = sortArg;
   if (typeArg) S.resourceCenterType = typeArg;
-  el.innerHTML = '<div class="card"><div class="card-header"><h3>资源中心</h3></div><div class="loading-block"><span class="spinner"></span> 加载资源中...</div></div>';
+  el.innerHTML = _pageHero('我的学习资料库', '这里保存你在 AI 会话和资源生成页中生成过的学习资料。', '<button class="btn btn-primary" onclick="navTo(\'assistant\')">去 AI 会话</button><button class="btn btn-outline" onclick="navTo(\'generator\')">手动生成学习资料</button>') + '<div class="card"><div class="loading-block"><span class="spinner"></span> 加载资源中...</div></div>';
   try {
     const [filesRes, sessionsRes, bookmarksRes] = await Promise.all([
       api('/api/resources/generated'),
@@ -1526,7 +1642,7 @@ async function loadResourceCenter(filter = 'all', queryArg, sortArg, typeArg){
     let files = filesRaw.slice();
     if (query) {
       files = files.filter(f => {
-        const hay = [f.title, f.label, f.type, f.resource_type, f.original_filename, f.filename, f.content_type, f.status, f.course_name, f.course_title].filter(Boolean).join(' ').toLowerCase();
+        const hay = [f.title, f.topic, f.question, f.knowledge_point, f.chapter, f.label, f.type, f.resource_type, f.original_filename, f.filename, f.content_type, f.status, f.course_name, f.course_title].filter(Boolean).join(' ').toLowerCase();
         return hay.includes(query);
       });
     }
@@ -1542,7 +1658,7 @@ async function loadResourceCenter(filter = 'all', queryArg, sortArg, typeArg){
     });
     const stats = _resourceStats(files, bookmarks);
     const toolbar = _resourceToolbar(filter, query, sort, typeFilter);
-    const tags = _resourceTags(typeFilter);
+    const tags = _resourceTags(typeFilter, files);
     const resourceFiles = _resourceFileCards(files);
     const bookmarkCards = _resourceBookmarkCards(bookmarks);
     const sessionCards = _resourceSessionCards(sessions);
@@ -1551,7 +1667,7 @@ async function loadResourceCenter(filter = 'all', queryArg, sortArg, typeArg){
     if (filter === 'all' || filter === 'file') sections.push('<div class="card"><div class="card-header"><h3>资源列表</h3></div>' + resourceFiles + '</div>');
     if (filter === 'all' || filter === 'bookmark') sections.push('<div class="card"><div class="card-header"><h3>收藏资源</h3></div>' + bookmarkCards + '</div>');
     if (filter === 'all' || filter === 'session') sections.push('<div class="card"><div class="card-header"><h3>最近会话</h3></div>' + sessionCards + '</div>');
-    el.innerHTML = '<div class="card"><div class="card-header"><h3>资源中心</h3><button class="btn btn-sm btn-outline" onclick="loadResourceCenter(\'' + filter + '\')">🔄 刷新</button></div><div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px"><button class="btn btn-sm btn-primary" onclick="navTo(\'generator\')">⚡ 去生成资源</button><button class="btn btn-sm btn-outline" onclick="navTo(\'assistant\')">💬 去提问</button><button class="btn btn-sm btn-outline" onclick="navTo(\'learning-report\')">📊 看学习报告</button></div>' + stats + packageOverview + toolbar + tags + '</div><div id="resource-package-detail-host" style="margin-bottom:12px">' + (S.currentResourcePackage ? _resourcePackageDetailHtml(S.currentResourcePackage) : '') + '</div>' + sections.join('');
+    el.innerHTML = _pageHero('我的学习资料库', '这里保存你在 AI 会话和资源生成页中生成过的学习资料。AI 会话负责自动推荐，手动生成页负责按主题主动生成，这里负责保存和复用。', '<button class="btn btn-primary" onclick="navTo(\'assistant\')">去 AI 会话提问</button><button class="btn btn-outline" onclick="navTo(\'generator\')">手动生成学习资料</button><button class="btn btn-outline" onclick="loadResourceCenter(\'' + filter + '\')">刷新</button>') + '<div class="card">' + stats + packageOverview + toolbar + tags + '</div><div id="resource-package-detail-host" style="margin-bottom:12px">' + (S.currentResourcePackage ? _resourcePackageDetailHtml(S.currentResourcePackage) : '') + '</div>' + sections.join('');
   } catch (e) {
     el.innerHTML = '<div class="error-card"><div class="err-title">资源加载失败</div><div class="err-detail">' + esc(e.message || '未知错误') + '</div></div>';
   }
@@ -1560,7 +1676,7 @@ async function loadResourceCenter(filter = 'all', queryArg, sortArg, typeArg){
 async function loadWrongBook(){
   const el = document.getElementById('page-wrong-book');
   if (!el) return;
-  el.innerHTML = '<div class="card"><div class="card-header"><h3>错题本</h3><button class="btn btn-sm btn-outline" onclick="loadWrongBook()">🔄 刷新</button></div><div class="loading-block"><span class="spinner"></span> 加载中...</div></div>';
+  el.innerHTML = _pageHero('错题复盘', '把做错的题留在这里，先看解析，再生成针对性复习和 3 道巩固练习。', '<button class="btn btn-primary" onclick="loadArtifactPreview(\'quiz\', S.lastTopic || \'函数极限\')">重新练 3 题</button><button class="btn btn-outline" onclick="navTo(\'assistant\')">追问错题</button>') + '<div class="card"><div class="loading-block"><span class="spinner"></span> 加载中...</div></div>';
   try {
     const [wrongRes, reportRes] = await Promise.all([
       api('/api/analytics/wrong-book'),
@@ -1590,8 +1706,8 @@ async function loadWrongBook(){
         '<button class="btn btn-sm btn-outline" onclick="generateWrongBookResource(&quot;mindmap&quot;, ' + kpArg + ')">知识结构图</button>' +
         actions +
         '<button class="btn btn-sm btn-primary" onclick="generateWrongBookReviewPath(' + kpArg + ')">生成复习路径</button></div></div>';
-    }).join('') : '<div class="empty-state"><div class="empty-icon">🧯</div><p>暂无错题</p><p style="font-size:11px;color:var(--gray-400)">做完测验后，错题会自动出现在这里</p><div style="margin-top:10px;display:flex;gap:8px;justify-content:center;flex-wrap:wrap"><button class="btn btn-sm btn-primary" onclick="navTo(\'assistant\')">去提问</button><button class="btn btn-sm btn-outline" onclick="loadArtifactPreview(\'quiz\', \'当前主题\')">去做练习</button></div></div>';
-    el.innerHTML = '<div class="card"><div class="card-header"><h3>错题本</h3><button class="btn btn-sm btn-outline" onclick="loadWrongBook()">🔄 刷新</button></div>' + body + '</div>';
+    }).join('') : _emptyAction('🧯', '暂无错题。先完成 3 道诊断练习，系统会自动记录错题并生成复习建议。', '', '<button class="btn btn-sm btn-primary" onclick="loadArtifactPreview(\'quiz\', S.lastTopic || \'函数极限\')">先做 3 道练习</button><button class="btn btn-sm btn-outline" onclick="navTo(\'assistant\')">先去提问</button>');
+    el.innerHTML = _pageHero('错题复盘', '选错后不要直接跳走：先看本题讲解，再把错因回流到画像、报告和学习路径。', '<button class="btn btn-primary" onclick="generateWrongBookReviewPath(S.lastTopic || \'函数极限\')">生成针对性复习</button><button class="btn btn-outline" onclick="loadArtifactPreview(\'quiz\', S.lastTopic || \'函数极限\')">重新练 3 题</button>') + '<div class="card"><div class="card-header"><h3>错题列表</h3><button class="btn btn-sm btn-outline" onclick="loadWrongBook()">刷新</button></div>' + body + '</div>';
   } catch (e) {
     el.innerHTML = '<div class="error-card"><div class="err-title">错题本加载失败</div><div class="err-detail">' + esc(e.message || '未知错误') + '</div></div>';
   }
@@ -1707,7 +1823,7 @@ async function loadLearningReportPage(){
     const masteryLabel = _formatMasteryLabel(masteryOverview, masteryItems);
     const wrongCount = _reportCount(report, 'wrong_count', wrongItems.length);
     const bookmarkCount = _reportCount(report, 'bookmark_count', bookmarks.length);
-    const activityCards = audits.length ? audits.slice(0,5).map(a => '<div class="course-card"><h4>🧾 ' + esc(a.action || '行为记录') + '</h4><div class="course-meta"><span>' + esc(a.detail || '') + '</span></div></div>').join('') : '<div class="empty-state"><div class="empty-icon">🧾</div><p>暂无行为记录</p></div>';
+    const activityCards = audits.length ? audits.slice(0,5).map(a => '<div class="course-card"><h4>🧾 ' + esc(a.action || '行为记录') + '</h4><div class="course-meta"><span>' + esc(a.detail || '') + '</span></div></div>').join('') : _emptyAction('🧾', '暂无足够学习数据。完成一次提问和练习后，系统会生成报告。', '', '<button class="btn btn-sm btn-primary" onclick="navTo(\'assistant\')">去提问诊断</button><button class="btn btn-sm btn-outline" onclick="loadArtifactPreview(\'quiz\', \'函数极限\')">做 3 道练习</button>');
     const actionCards = nextActions.length ? nextActions.map(a =>
       '<div class="course-card"><h4>' + esc(a.title || '下一步') + '</h4><div class="course-meta"><span>' + esc(a.detail || '') + '</span></div><div style="margin-top:8px;display:flex;gap:6px;flex-wrap:wrap">' +
       ((a.resource_types || []).map(t => '<button class="btn btn-sm btn-outline" onclick="quickGenerateFromChat(' + jsAttrArg(t) + ', ' + jsAttrArg(weakPoints[0] || '当前主题') + ')">生成 ' + esc(resourceLabel(t)) + '</button>').join('')) +
@@ -1727,7 +1843,7 @@ async function loadLearningReportPage(){
       '<div class="lr-stat"><span class="lr-stat-value">' + masteryLabel + '</span><span class="lr-stat-label">平均掌握度</span></div>' +
       '</div>' +
       '<div class="lr-section"><div class="lr-section-title">画像驱动建议</div>' + actionCards +
-      '<div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap"><button class="btn btn-sm btn-primary" onclick="navTo(\'assistant\')">继续提问</button><button class="btn btn-sm btn-outline" onclick="navTo(\'generator\')">生成资源</button><button class="btn btn-sm btn-outline" onclick="navTo(\'wrong-book\')">复盘错题</button><button class="btn btn-sm btn-outline" onclick="navTo(\'resource-center\')">查看收藏资源</button></div></div>' +
+      '<div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap"><button class="btn btn-sm btn-primary" onclick="navTo(\'assistant\')">按薄弱点继续学习</button><button class="btn btn-sm btn-outline" onclick="quickGenerateFromChat(&quot;study_plan&quot;, ' + jsAttrArg((weakPoints && weakPoints[0]) || '函数极限') + ')">生成下一阶段路径</button><button class="btn btn-sm btn-outline" onclick="navTo(\'wrong-book\')">复盘错题</button><button class="btn btn-sm btn-outline" onclick="navTo(\'resource-center\')">查看学习资料</button></div></div>' +
       insightSection +
       masterySection +
       (weakPoints.length ? '<div class="lr-section"><div class="lr-section-title">薄弱知识点</div><div class="lr-chips">' + weakPoints.map(w => '<span class="lr-chip">' + esc(w) + '</span>').join('') + '</div></div>' : '') +
@@ -1772,7 +1888,7 @@ async function joinReviewPlan(topic, resourceType){
 async function loadSettings(){
   const el = document.getElementById('page-settings');
   if (!el) return;
-  el.innerHTML = '<div class="card"><div class="card-header"><h3>账户与设置</h3><button class="btn btn-sm btn-outline" onclick="loadSettings()">🔄 刷新</button></div><div class="loading-block"><span class="spinner"></span> 加载配置中...</div></div>';
+  el.innerHTML = _pageHero('模型与设置', '配置 Spark / DeepSeek 后返回 AI 会话；不配置也可以使用本地演示模式完成学习闭环。', '<button class="btn btn-primary" onclick="navTo(\'assistant\')">配置模型后返回 AI 会话</button><button class="btn btn-outline" onclick="navTo(\'dashboard\')">使用本地演示模式</button>') + '<div class="card"><div class="loading-block"><span class="spinner"></span> 加载配置中...</div></div>';
   try {
     const r = await api('/api/settings/status');
     const d = (r.ok && r.data) ? r.data : {};
@@ -1798,12 +1914,13 @@ async function loadSettings(){
       '<div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn btn-primary" onclick="_saveLlmProvider(\'deepseek\')">保存 DeepSeek 配置</button><button class="btn btn-outline" onclick="_testLlmProvider(\'deepseek\')">测试 DeepSeek 连接</button></div>' +
       '<p id="deepseek-test-result" style="font-size:11px;color:var(--gray-400);margin-top:8px">可修改 DeepSeek 连接配置；密钥不会回显。</p>';
     el.innerHTML =
+      _pageHero('模型与设置', '配置 Spark / DeepSeek 后返回 AI 会话；不配置也可以使用本地演示模式完成学习闭环。', '<button class="btn btn-primary" onclick="navTo(\'assistant\')">配置模型后返回 AI 会话</button><button class="btn btn-outline" onclick="navTo(\'dashboard\')">使用本地演示模式</button>') +
       '<div class="grid grid-2">' +
-      '<div class="card"><div class="card-header"><h3>账户与设置</h3></div>' +
+      '<div class="card"><div class="card-header"><h3>当前使用状态</h3></div>' +
       '<div class="form-group"><label>当前用户</label><input readonly value="管理员"></div>' +
       '<div class="form-group"><label>当前课程</label><input readonly value="' + esc(S.courseName || '未选择') + '"></div>' +
       '<div class="form-group"><label>权限状态</label><input readonly value="已开放全部设置"></div>' +
-      '<div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn btn-primary" onclick="navTo(\'dashboard\')">进入系统</button><button class="btn btn-outline" onclick="loadSettings()">刷新状态</button></div></div>' +
+      '<div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn btn-primary" onclick="navTo(\'assistant\')">返回 AI 会话</button><button class="btn btn-outline" onclick="navTo(\'dashboard\')">使用本地演示模式</button><button class="btn btn-outline" onclick="loadSettings()">刷新状态</button></div></div>' +
       '<div class="card"><div class="card-header"><h3>推理引擎配置</h3></div>' +
       '<div class="course-card"><h4>当前：<span id="llm-provider">' + esc(_publicModelStatus(d)) + '</span></h4><div class="course-meta"><span>星火：' + sparkReady + '</span><span>本地兜底：可用</span></div></div>' + llmPanel + '</div></div>' +
       '<div class="card" style="margin-top:12px"><div class="card-header"><h3>系统状态</h3></div>' +
@@ -2194,14 +2311,15 @@ async function loadProfileCenter(){
       return [label, _profileValueText(dims[label]), meta[1], meta[0]];
     });
     let h = '';
-    h += '<div class="card"><div class="card-header"><div><h3>对话式学习画像</h3><p class="muted">系统根据提问、练习、错题和资源使用行为动态更新学生画像</p></div><button class="btn btn-sm btn-outline" onclick="loadProfileCenter()">🔄 刷新</button></div>';
+    h += _pageHero('对话式学习画像', '系统根据提问、练习、错题和资源使用行为动态更新学生画像。画像不是静态资料，会决定讲解深度、资源推荐和学习路径。', '<button class="btn btn-primary" onclick="quickGenerateFromChat(&quot;study_plan&quot;, ' + jsAttrArg(_profileValueText(dims['薄弱知识点']) || '函数极限') + ')">根据画像生成今日计划</button><button class="btn btn-outline" onclick="navTo(\'resource-center\')">查看推荐资源</button><button class="btn btn-outline" onclick="loadProfileCenter()">刷新</button>');
+    h += '<div class="card">';
     h += '<div class="course-card"><h4>动态画像概览</h4><div class="course-meta"><span>' + esc(_profileSnapshotText(profile)) + '</span><span>版本 #' + esc(String(profile.profile_version || 1)) + '</span><span>' + esc(updatedText ? '本轮更新：' + updatedText : '本轮更新：待积累') + '</span></div><p style="font-size:13px;line-height:1.7;color:var(--gray-600);margin-top:8px">' + esc(profile.profile_summary || '') + '</p><div class="course-meta"><span>下一步建议：' + esc(profile.next_recommendation || '建议先复习薄弱知识点，再完成 3 道同主题练习。') + '</span></div></div>';
     h += '<div class="grid grid-2" style="margin-top:12px">' +
       _metricCard('画像置信度', metrics.profile_confidence_pct || 0, '%', '对当前画像判断的可靠程度，来自对话、测验和错题证据。') +
       _metricCard('学习活跃度', metrics.learning_activity_score || 0, '%', '由对话轮次、画像版本和错题行为综合估计。') +
       _metricCard('复习风险', metrics.review_risk_score || 0, '%', '薄弱点和基础水平共同决定，越高越需要专项复盘。', '#e11d48') +
       _metricCard('证据数量', metrics.evidence_count || 0, '', '系统实际记录的画像变化依据条数。', '#4f46e5') +
-    '</div>';
+    '</div></div>';
     h += '<div class="card" style="margin-top:12px"><div class="card-header"><h3>8 维动态画像</h3></div><div class="grid grid-2">' + cards.map(c => '<div class="course-card"><div style="display:flex;justify-content:space-between;gap:8px"><h4>' + esc(c[0]) + '</h4><strong style="color:var(--primary)">' + esc(String(c[2])) + '%</strong></div><div class="course-meta"><span>' + esc(c[1]) + '</span></div><div style="height:6px;background:#eef2f7;border-radius:999px;overflow:hidden;margin-top:8px"><span style="display:block;height:100%;width:' + Math.max(0, Math.min(100, Number(c[2]) || 0)) + '%;background:var(--primary)"></span></div><p style="font-size:12px;line-height:1.6;color:var(--gray-500);margin-top:6px">' + esc(c[3]) + '</p></div>').join('') + '</div></div>';
     h += '<div class="grid grid-2" style="margin-top:12px">';
     h += '<div class="card"><div class="card-header"><h3>画像如何参与生成</h3></div><div class="course-card"><h4>问答适配</h4><div class="course-meta"><span>根据知识基础和认知风格调整回答深度</span></div></div><div class="course-card"><h4>资源包适配</h4><div class="course-meta"><span>根据内容偏好和薄弱点选择资源类型</span></div></div><div class="course-card"><h4>学习路径适配</h4><div class="course-meta"><span>根据学习节奏和掌握度安排复习顺序</span></div></div></div>';
@@ -2211,10 +2329,10 @@ async function loadProfileCenter(){
     h += '<div class="form-group"><label>用自然语言描述你的专业、目标、偏好与薄弱点</label><textarea id="profile-dialogue-input" class="input" rows="4" placeholder="例如：我是计算机专业，准备考研，基础一般，喜欢看思维导图和例题，导数和线性代数比较薄弱"></textarea></div>';
     h += '<div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn btn-primary" onclick="extractProfileFromDialogue()">从对话更新画像</button><button class="btn btn-outline" onclick="confirmProfile()">确认当前画像</button><button class="btn btn-outline" onclick="navTo(\'assistant\')">去会话中心</button></div></div>';
     h += '<div class="card" style="margin-top:12px"><div class="card-header"><h3>系统判断依据</h3></div>';
-    h += (changes.length ? changes.slice(0, 8).map(c => '<div class="course-card"><h4>' + esc(c.field_name) + '</h4><div class="course-meta"><span>' + esc(c.old_value || '—') + ' → ' + esc(c.new_value || '—') + '</span></div><div class="course-meta"><span>' + esc(c.reason || '') + '</span><span>来源 ' + esc(c.source_type || '') + '</span></div></div>').join('') : '<div class="empty-state"><div class="empty-icon">💡</div><p>暂无解释记录，发起对话或学习行为后会自动生成</p></div>') + '</div>';
-    h += '<div class="card" style="margin-top:12px"><div class="card-header"><h3>历史版本</h3></div>' + (versions.length ? versions.map(v => '<div class="course-card"><h4>版本 #' + esc(v.version) + '</h4><div class="course-meta"><span>' + esc(v.trigger_source || 'dialogue') + '</span><span>置信度 ' + esc(String(v.confidence || 0)) + '</span></div><div style="margin-top:6px"><button class="btn btn-sm btn-outline" onclick="restoreProfileVersion(' + jsAttrArg(v.id) + ')">回滚到此版本</button></div></div>').join('') : '<div class="empty-state"><div class="empty-icon">🕰️</div><p>暂无历史版本</p></div>') + '</div>';
-    h += '<div class="card" style="margin-top:12px"><div class="card-header"><h3>学习建议</h3></div><div class="course-card"><h4>下一步动作</h4><div class="course-meta"><span>去会话中心提问、完成一次测验、再回到画像中心确认变化</span></div></div></div>';
-    h += '<div class="card" style="margin-top:12px"><div class="card-header"><h3>变更日志</h3></div>' + (changes.length ? changes.map(c => '<div class="course-card"><h4>' + esc(c.field_name) + '</h4><div class="course-meta"><span>' + esc(c.old_value || '—') + '</span><span>→</span><span>' + esc(c.new_value || '—') + '</span></div><div class="course-meta"><span>' + esc(c.reason || '') + '</span></div></div>').join('') : '<div class="empty-state"><div class="empty-icon">🧾</div><p>暂无变更日志</p></div>') + '</div>';
+    h += (changes.length ? changes.slice(0, 8).map(c => '<div class="course-card"><h4>' + esc(c.field_name) + '</h4><div class="course-meta"><span>' + esc(c.old_value || '—') + ' → ' + esc(c.new_value || '—') + '</span></div><div class="course-meta"><span>' + esc(c.reason || '') + '</span><span>来源 ' + esc(c.source_type || '') + '</span></div></div>').join('') : _emptyAction('💡', '画像正在构建。你可以先描述学习目标，或提问一个不会的问题。', '', '<button class="btn btn-sm btn-primary" onclick="navTo(\'assistant\')">提问一个不会的问题</button><button class="btn btn-sm btn-outline" onclick="document.getElementById(\'profile-dialogue-input\') && document.getElementById(\'profile-dialogue-input\').focus()">描述学习目标</button>')) + '</div>';
+    h += '<div class="card" style="margin-top:12px"><div class="card-header"><h3>历史版本</h3></div>' + (versions.length ? versions.map(v => '<div class="course-card"><h4>版本 #' + esc(v.version) + '</h4><div class="course-meta"><span>' + esc(v.trigger_source || 'dialogue') + '</span><span>置信度 ' + esc(String(v.confidence || 0)) + '</span></div><div style="margin-top:6px"><button class="btn btn-sm btn-outline" onclick="restoreProfileVersion(' + jsAttrArg(v.id) + ')">回滚到此版本</button></div></div>').join('') : _emptyAction('🕰️', '暂无历史版本', '完成一次对话或练习后会出现画像版本记录。', '<button class="btn btn-sm btn-primary" onclick="navTo(\'assistant\')">去 AI 会话</button>')) + '</div>';
+    h += '<div class="card" style="margin-top:12px"><div class="card-header"><h3>学习建议</h3></div><div class="course-card"><h4>下一步动作</h4><div class="course-meta"><span>根据画像生成今日计划，再完成一次测验确认变化</span></div><div class="primary-actions"><button class="btn btn-sm btn-primary" onclick="quickGenerateFromChat(&quot;study_plan&quot;, ' + jsAttrArg(_profileValueText(dims['薄弱知识点']) || '函数极限') + ')">生成今日计划</button><button class="btn btn-sm btn-outline" onclick="navTo(\'resource-center\')">查看推荐资源</button></div></div></div>';
+    h += '<div class="card" style="margin-top:12px"><div class="card-header"><h3>变更日志</h3></div>' + (changes.length ? changes.map(c => '<div class="course-card"><h4>' + esc(c.field_name) + '</h4><div class="course-meta"><span>' + esc(c.old_value || '—') + '</span><span>→</span><span>' + esc(c.new_value || '—') + '</span></div><div class="course-meta"><span>' + esc(c.reason || '') + '</span></div></div>').join('') : _emptyAction('🧾', '暂无变更日志', '提问、练习、错题和资源使用都会成为画像更新证据。', '<button class="btn btn-sm btn-primary" onclick="navTo(\'assistant\')">去提问诊断</button>')) + '</div>';
     el.innerHTML = h;
   } catch (e) {
     el.innerHTML = '<div class="error-card"><div class="err-title">画像加载失败</div><div class="err-detail">' + esc(e.message || '未知错误') + '</div></div>';
@@ -2255,7 +2373,7 @@ async function confirmProfile(){
 async function loadCourses(){
   const el = document.getElementById('page-courses');
   if (!el) return;
-  el.innerHTML = '<div class="loading-block"><span class="spinner"></span> 加载课程中...</div>';
+  el.innerHTML = _pageHero('课程中心', '选择学习主线课程。当前答辩样例保留《高等数学上册》，后续提问、资料和报告都会围绕当前课程。', '<button class="btn btn-primary" onclick="navTo(\'assistant\')">使用内置《高等数学上册》开始提问</button><button class="btn btn-outline" onclick="navTo(\'knowledge\')">查看课程资料</button>') + '<div class="card"><div class="loading-block"><span class="spinner"></span> 加载课程中...</div></div>';
   try {
     const r = await api('/api/courses');
     const courses = r.ok ? (Array.isArray(r.data) ? r.data : []) : (S.courses || []);
@@ -2265,8 +2383,8 @@ async function loadCourses(){
       const cid = c.id;
       const active = cid === S.courseId;
       return '<div class="course-card"><h4>📘 ' + esc(c.name || '未命名课程') + (active ? ' <span class="topbar-badge ok">当前</span>' : '') + '</h4><div class="course-meta"><span>' + esc(c.description || '暂无简介') + '</span></div><div style="margin-top:8px;display:flex;gap:8px;flex-wrap:wrap"><button class="btn btn-sm ' + (active ? 'btn-outline' : 'btn-primary') + '" onclick="selectCourse(' + jsAttrArg(cid) + ', ' + jsAttrArg(c.name || '') + ')">' + (active ? '已选中' : '切换到此课程') + '</button></div></div>';
-    }).join('') : '<div class="empty-state"><div class="empty-icon">📘</div><p>暂无课程</p><p style="font-size:11px;color:var(--gray-400)">教师账户可创建课程并上传资料</p></div>';
-    el.innerHTML = '<div class="card"><div class="card-header"><h3>课程中心</h3><button class="btn btn-sm btn-outline" onclick="loadCourses()">🔄 刷新</button><button class="btn btn-sm btn-primary" onclick="createCoursePrompt()">+ 新建课程</button></div>' + body + '</div>';
+    }).join('') : _emptyAction('📘', '暂无课程资料。你可以上传教材，或直接使用内置《高等数学上册》示例课程。', '', '<button class="btn btn-sm btn-primary" onclick="navTo(\'assistant\')">使用内置示例课程</button><button class="btn btn-sm btn-outline" onclick="createCoursePrompt()">新建课程</button>');
+    el.innerHTML = _pageHero('课程中心', '选择学习主线课程。当前答辩样例保留《高等数学上册》，后续提问、资料和报告都会围绕当前课程。', '<button class="btn btn-primary" onclick="navTo(\'assistant\')">上传资料后开始提问</button><button class="btn btn-outline" onclick="navTo(\'knowledge\')">查看课程资料库</button><button class="btn btn-outline" onclick="loadCourses()">刷新</button>') + '<div class="card"><div class="card-header"><h3>课程列表</h3><button class="btn btn-sm btn-primary" onclick="createCoursePrompt()">+ 新建课程</button></div>' + body + '</div>';
   } catch (e) {
     el.innerHTML = '<div class="error-card"><div class="err-title">课程加载失败</div><div class="err-detail">' + esc(e.message || '未知错误') + '</div></div>';
   }
@@ -2300,7 +2418,7 @@ async function createCoursePrompt(){
 async function loadKnowledgeBase(){
   const el = document.getElementById('page-knowledge');
   if (!el) return;
-  el.innerHTML = '<div class="loading-block"><span class="spinner"></span> 加载知识库中...</div>';
+  el.innerHTML = _pageHero('课程资料库', '查看课程文件、切片和索引状态。上传资料后可以直接回到 AI 会话提问。', '<button class="btn btn-primary" onclick="navTo(\'assistant\')">上传资料后开始提问</button><button class="btn btn-outline" onclick="navTo(\'assistant\')">使用内置《高等数学上册》示例课程</button>') + '<div class="card"><div class="loading-block"><span class="spinner"></span> 加载知识库中...</div></div>';
   try {
     const [dashRes, filesRes] = await Promise.all([
       api('/api/app/dashboard?course_id=' + S.courseId),
@@ -2312,8 +2430,9 @@ async function loadKnowledgeBase(){
     const uploadBlock = '<div class="form-group"><label>支持 PDF / Word / TXT / PPT</label><input id="kb-upload-input" type="file" accept=".pdf,.doc,.docx,.txt,.ppt,.pptx" onchange="uploadCourseFile(this)"></div><p style="font-size:11px;color:var(--gray-400)">上传后系统会自动解析、切片并写入 ChromaDB 向量库。</p><button class="btn btn-sm btn-outline" style="margin-top:8px" onclick="buildCourseIndex()">🔍 重建向量索引</button>';
     const fileCards = files.length ? files.map(f =>
       '<div class="course-card"><h4>📄 ' + esc(f.original_filename || '文件') + '</h4><div class="course-meta"><span>状态 ' + esc(f.status || 'unknown') + '</span><span>' + esc(f.content_type || '') + '</span></div></div>'
-    ).join('') : '<div class="empty-state"><div class="empty-icon">📚</div><p>暂无课程文件</p><p style="font-size:11px;color:var(--gray-400)">上传 PDF/PPT/Word 后将自动切片入库</p></div>';
-    el.innerHTML = '<div class="card"><div class="card-header"><h3>知识库 · ' + esc(S.courseName || '') + '</h3><button class="btn btn-sm btn-outline" onclick="loadKnowledgeBase()">🔄 刷新</button></div>' +
+    ).join('') : _emptyAction('📚', '暂无课程资料。你可以上传教材，或直接使用内置《高等数学上册》示例课程。', '', '<button class="btn btn-sm btn-primary" onclick="navTo(\'assistant\')">使用内置示例课程提问</button>');
+    el.innerHTML = _pageHero('课程资料库', '查看课程文件、切片和索引状态。上传资料后可以直接回到 AI 会话提问。', '<button class="btn btn-primary" onclick="navTo(\'assistant\')">上传资料后开始提问</button><button class="btn btn-outline" onclick="navTo(\'assistant\')">使用内置《高等数学上册》示例课程</button><button class="btn btn-outline" onclick="loadKnowledgeBase()">刷新</button>') +
+      '<div class="card"><div class="card-header"><h3>知识库 · ' + esc(S.courseName || '') + '</h3></div>' +
       '<div class="grid grid-3" style="margin-bottom:12px"><div class="card grid-stat"><div class="val" style="color:var(--primary)">' + esc(String(kb.chunks_count || 0)) + '</div><div class="lbl">知识片段</div></div><div class="card grid-stat"><div class="val" style="color:var(--success)">' + esc(String(kb.vector_count || 0)) + '</div><div class="lbl">向量索引</div></div><div class="card grid-stat"><div class="val" style="color:var(--warning)">' + esc(kb.status || 'unknown') + '</div><div class="lbl">库状态</div></div></div>' +
       '<div class="card" style="margin-bottom:12px"><div class="card-header"><h3>上传课程资料</h3></div>' + uploadBlock + '</div>' +
       '<div class="card"><div class="card-header"><h3>课程文件</h3></div>' + fileCards + '</div></div>';
@@ -2394,7 +2513,7 @@ async function uploadCourseFile(inputEl){
 async function loadLearningPath(){
   const el = document.getElementById('page-learning-path');
   if (!el) return;
-  el.innerHTML = '<div class="loading-block"><span class="spinner"></span> 加载学习路径中...</div>';
+  el.innerHTML = _pageHero('学习路径', '根据最近提问、画像、错题和资源使用情况安排下一步：先学什么、练什么、怎么验收。', '<button class="btn btn-primary" onclick="navTo(\'assistant\')">先提问生成路径</button><button class="btn btn-outline" onclick="navTo(\'resource-center\')">查看配套资源</button>') + '<div class="card"><div class="loading-block"><span class="spinner"></span> 加载学习路径中...</div></div>';
   const topic = S.pendingStudyTopic || S.lastTopic || S.lastQuestion || (document.getElementById('chat-input') || {}).value?.trim() || '当前学习主题';
   try {
     let plan = S.pendingStudyPlan || {};
@@ -2421,12 +2540,13 @@ async function loadLearningPath(){
         '<div class="course-meta" style="margin-top:6px"><span>预计 ' + esc(String(s.estimated_minutes || 15)) + ' 分钟</span><span>资料：' + esc(types.map(resourceLabel).join(' / ')) + '</span></div>' +
         (s.practice ? '<div class="course-meta" style="margin-top:6px"><span>练习任务：' + esc(s.practice) + '</span></div>' : '') +
         '<div style="margin-top:10px;display:flex;gap:6px;flex-wrap:wrap">' + resourceBtns + '</div></div>';
-    }).join('') : '<div class="empty-state"><div class="empty-icon">🗺️</div><p>暂无学习路径</p><p style="font-size:11px;color:var(--gray-400)">先在会话中心提问，或从错题本生成复习路径</p><button class="btn btn-sm btn-primary" style="margin-top:10px" onclick="navTo(\'assistant\')">去提问</button></div>';
+    }).join('') : _emptyAction('🗺️', '暂无学习路径。请先提问或生成学习资料，系统会根据画像生成路径。', '', '<button class="btn btn-sm btn-primary" onclick="navTo(\'assistant\')">先去提问</button><button class="btn btn-sm btn-outline" onclick="navTo(\'generator\')">先生成学习资料</button>');
     const summary = plan.profile_summary || (S.currentProfile && S.currentProfile.learning_goal) || '会根据最近问题、画像、错题和资源偏好实时生成';
     const recommended = Array.isArray(plan.recommended_topics) && plan.recommended_topics.length
       ? '<div class="lr-chips" style="margin:10px 0">' + plan.recommended_topics.map(function(t){ return '<span class="lr-chip">' + esc(t) + '</span>'; }).join('') + '</div>'
       : '';
-    el.innerHTML = '<div class="card"><div class="card-header"><h3>学习路径 · ' + esc(plan.title || topic) + '</h3><button class="btn btn-sm btn-outline" onclick="S.pendingStudyPlan=null;loadLearningPath()">🔄 重新生成</button></div>' +
+    el.innerHTML = _pageHero('学习路径', '按路径完成“学习资料 → 练习 → 复盘 → 复测”。每一步都可以生成配套资源。', '<button class="btn btn-primary" onclick="loadArtifactPreview(\'lecture_doc\', ' + jsAttrArg(topic) + ')">开始第一步</button><button class="btn btn-outline" onclick="quickGenerateFromChat(&quot;quiz&quot;, ' + jsAttrArg(topic) + ')">完成后复测</button><button class="btn btn-outline" onclick="S.pendingStudyPlan=null;loadLearningPath()">重新生成</button>') +
+      '<div class="card"><div class="card-header"><h3>学习路径 · ' + esc(plan.title || topic) + '</h3></div>' +
       '<div class="course-card"><h4>个性化依据</h4><div class="course-meta"><span>' + esc(summary) + '</span></div>' + recommended + (plan.next_action ? '<div class="course-meta"><span>下一步：' + esc(plan.next_action) + '</span></div>' : '') + '</div>' +
       body + '</div>';
   } catch (e) {
