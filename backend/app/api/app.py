@@ -110,7 +110,7 @@ async def api_app_ask_stream(
 
 class AppGenerateRequest(BaseModel):
     course_id: int = Field(default=2)
-    resource_type: str = Field(..., description="mindmap, lecture_doc, quiz, ppt, study_plan")
+    resource_type: str = Field(..., description="lecture_doc, mindmap, quiz, ppt, study_plan, video_script, reading")
     topic: str = Field(default="导数与极限入门", min_length=1)
 
 
