@@ -171,6 +171,60 @@ function _currentLearningTopic(fallback){
   return typed || S.lastTopic || S.lastQuestion || fallback || '当前学习主题';
 }
 
+function _chatSendButton(){
+  return document.querySelector('button[onclick="_sendQuestion()"], button[onclick="sendQuestion()"]');
+}
+
+function _setAskBusy(isBusy){
+  S.askBusy = !!isBusy;
+  const input = document.getElementById('chat-input');
+  const btn = _chatSendButton();
+  if (input) input.disabled = !!isBusy;
+  if (btn) {
+    btn.disabled = !!isBusy;
+    btn.classList.toggle('is-loading', !!isBusy);
+    btn.textContent = isBusy ? '生成中…' : '发送';
+  }
+}
+
+function _askWaitingHtml(stage, seconds){
+  const steps = [
+    '正在理解你的问题',
+    '正在检索课程资料',
+    '正在调用 Spark X2 生成回答',
+    '正在做可信检查',
+    '正在准备学习资源建议'
+  ];
+  const idx = Math.max(0, Math.min(steps.length - 1, Number(stage) || 0));
+  const extra = seconds >= 20
+    ? '<div class="ask-wait-note strong">仍在生成中，你可以等待结果；若网络较慢，系统会保留本地演示模板兜底。</div>'
+    : (seconds >= 8 ? '<div class="ask-wait-note">Spark X2 正在生成，通常需要 10-25 秒，请稍等。</div>' : '');
+  return '<div class="ask-wait-card">' +
+    '<div class="ask-wait-title"><span class="spinner"></span><strong>' + esc(steps[idx]) + '</strong></div>' +
+    '<div class="ask-wait-steps">' + steps.map(function(s, i){
+      return '<span class="' + (i <= idx ? 'active' : '') + '">' + esc(s) + '</span>';
+    }).join('') + '</div>' +
+    extra +
+    '</div>';
+}
+
+function _startAskWaiting(typingId){
+  const started = Date.now();
+  const update = function(){
+    const ce = document.querySelector('#' + typingId + ' .msg-content');
+    if (!ce) return;
+    const sec = Math.floor((Date.now() - started) / 1000);
+    const stage = sec < 2 ? 0 : (sec < 5 ? 1 : (sec < 11 ? 2 : (sec < 17 ? 3 : 4)));
+    ce.innerHTML = _askWaitingHtml(stage, sec);
+  };
+  update();
+  return setInterval(update, 1200);
+}
+
+function _stopAskWaiting(timer){
+  if (timer) clearInterval(timer);
+}
+
 function _stripJsonFence(raw){
   return String(raw || '').trim()
     .replace(/^```(?:json|mermaid|markdown)?\s*/i, '')
@@ -685,7 +739,7 @@ async function loadDashboard(){
       ['先提问诊断当前不会的问题','再生成讲义 / 思维导图 / PPT','完成 3 道诊断练习','复盘错题并看解析','进入下一步学习路径'].map(function(x, i){ return '<div class="course-card"><h4>' + (i + 1) + '. ' + esc(x) + '</h4></div>'; }).join('') +
       '<div class="course-meta" style="margin-top:8px"><span>系统建议：' + esc(recommended) + '</span></div></div>';
     h += '</div>';
-    h += '<div class="next-step-card"><h4>主入口</h4><p style="font-size:13px;color:var(--gray-600);line-height:1.7;margin:0">不知道从哪里开始时，先把不会的问题说出来。系统会自动匹配课程依据、生成资料、安排练习和复盘路径。</p><div class="primary-actions"><button class="btn btn-primary" onclick="navTo(\'assistant\')">今天哪里不会？直接问我</button><button class="btn btn-outline" onclick="navTo(\'assistant\')">开始学习</button><button class="btn btn-outline" onclick="navTo(\'resource-center\')">查看我的资料库</button></div></div>';
+    h += '<div class="next-step-card"><h4>主入口</h4><p style="font-size:13px;color:var(--gray-600);line-height:1.7;margin:0">录屏演示建议按这三步走：先提问诊断，再生成学习资料，最后做 3 道练习验证掌握度。</p><div class="primary-actions"><button class="btn btn-primary" onclick="navTo(\'assistant\')">直接提问</button><button class="btn btn-outline" onclick="navTo(\'generator\')">生成学习资料</button><button class="btn btn-outline" onclick="loadArtifactPreview(\'quiz\', S.lastTopic || \'函数极限\')">开始诊断练习</button></div></div>';
     h += '<div class="card"><div class="card-header"><h3>学习闭环进度</h3><button class="btn btn-sm btn-outline" onclick="navTo(\'learning-report\')">看学习报告</button></div>' + _learningFlowHtml('diagnose') + '</div>';
     h += '<div class="grid grid-3" style="margin-top:12px">';
     h += '<div class="card grid-stat" onclick="navTo(\'learning-report\')" style="cursor:pointer"><div class="val" style="color:var(--primary)">' + completedRate + '%</div><div class="lbl">课程进度</div></div>';
@@ -1927,10 +1981,31 @@ function _learningReportInsights(report, wrongItems, bookmarks, audits, masteryI
     return '<div style="flex:1;text-align:center"><div style="height:92px;display:flex;align-items:end;justify-content:center"><div style="width:22px;height:' + h + '%;border-radius:999px;background:linear-gradient(180deg,var(--primary),var(--success))"></div></div><div style="font-size:11px;color:var(--gray-500);margin-top:4px">' + ['起点','上次','当前','测验'][i] + '</div></div>';
   }).join('');
   return '<div class="lr-section"><div class="lr-section-title">学习效果趋势</div><div class="grid grid-2">' +
-    '<div class="course-card"><h4>正确率 / 完成率趋势</h4><div style="display:flex;gap:8px;align-items:end;margin-top:8px">' + trend + '</div><div class="course-meta" style="margin-top:8px"><span>当前完成率 ' + rate + '%</span><span>测验正确率 ' + (accuracy !== null ? accuracy + '%' : '待测') + '</span></div></div>' +
+    '<div class="course-card"><h4>课程路径完成率 / 测验正确率趋势</h4><div style="display:flex;gap:8px;align-items:end;margin-top:8px">' + trend + '</div><div class="course-meta" style="margin-top:8px"><span>课程路径完成率 ' + rate + '%</span><span>测验正确率 ' + (accuracy !== null ? accuracy + '%' : '待测') + '</span></div></div>' +
     '<div class="course-card"><h4>掌握度分布</h4><div class="lr-chips" style="margin-top:8px"><span class="lr-chip">高掌握 ' + high + '</span><span class="lr-chip">中等 ' + mid + '</span><span class="lr-chip">需复盘 ' + low + '</span></div><div class="course-meta" style="margin-top:8px"><span>平均掌握度 ' + avgMasteryLabel + '</span><span>资源收藏 ' + bookmarkCount + '</span></div></div>' +
     '</div></div>' +
     '<div class="lr-section"><div class="lr-section-title">错题与资源使用</div><div class="grid grid-2"><div>' + wrongBars + '</div><div class="course-card"><h4>本周学习摘要</h4><div class="course-meta"><span>行为记录 ' + audits.length + ' 条</span><span>收藏资源 ' + bookmarkCount + ' 个</span><span>待复盘错题 ' + wrongCount + ' 道</span></div><p style="font-size:13px;line-height:1.7;color:var(--gray-600);margin-top:8px">建议优先复盘低掌握度知识点，再生成讲义、导图和巩固练习，最后回到学习报告查看掌握度变化。</p></div></div></div>';
+}
+
+function _reportRecommendation(progress, weakPoints, wrongCount, masteryLabel){
+  if (wrongCount > 0) {
+    const target = weakPoints && weakPoints.length ? '，重点看「' + weakPoints.slice(0, 2).join('、') + '」' : '';
+    return '已有错题记录，建议先按错题复盘' + target + '，再做 3 道同主题练习复测。';
+  }
+  if (weakPoints && weakPoints.length) {
+    return '已识别薄弱点：' + weakPoints.slice(0, 3).join('、') + '。建议先生成讲义或思维导图，再做诊断练习。';
+  }
+  if (masteryLabel && masteryLabel !== '待测评') {
+    return '已有测评掌握度数据，建议围绕低掌握知识点继续学习。';
+  }
+  return progress.next_recommendation || '暂无足够学习数据。先完成一次提问或测验，系统会生成报告。';
+}
+
+function _reportMetricNote(rate, wrongCount, masteryLabel){
+  if (rate === 0 && (wrongCount > 0 || (masteryLabel && masteryLabel !== '待测评'))) {
+    return '<div class="metric-note">课程路径尚未标记完成，但你已经产生了练习数据；下面的测评掌握度来自练习、错题和问答画像。</div>';
+  }
+  return '<div class="metric-note">完成率来自学习路径；掌握度来自练习、错题和问答画像；错题数来自错题本。</div>';
 }
 
 async function loadLearningReportPage(){
@@ -1961,11 +2036,12 @@ async function loadLearningReportPage(){
     const wrongCount = _reportCount(report, 'wrong_count', wrongItems.length);
     const bookmarkCount = _reportCount(report, 'bookmark_count', bookmarks.length);
     const activityCards = audits.length ? audits.slice(0,5).map(a => '<div class="course-card"><h4>🧾 ' + esc(a.action || '行为记录') + '</h4><div class="course-meta"><span>' + esc(a.detail || '') + '</span></div></div>').join('') : _emptyAction('🧾', '暂无足够学习数据。完成一次提问和练习后，系统会生成报告。', '', '<button class="btn btn-sm btn-primary" onclick="navTo(\'assistant\')">去提问诊断</button><button class="btn btn-sm btn-outline" onclick="loadArtifactPreview(\'quiz\', \'函数极限\')">做 3 道练习</button>');
+    const reportAdvice = _reportRecommendation(progress, weakPoints, wrongCount, masteryLabel);
     const actionCards = nextActions.length ? nextActions.map(a =>
       '<div class="course-card"><h4>' + esc(a.title || '下一步') + '</h4><div class="course-meta"><span>' + esc(a.detail || '') + '</span></div><div style="margin-top:8px;display:flex;gap:6px;flex-wrap:wrap">' +
       ((a.resource_types || []).map(t => '<button class="btn btn-sm btn-outline" onclick="quickGenerateFromChat(' + jsAttrArg(t) + ', ' + jsAttrArg(weakPoints[0] || '当前主题') + ')">生成 ' + esc(resourceLabel(t)) + '</button>').join('')) +
       '</div></div>'
-    ).join('') : '<div class="course-card"><h4>' + esc(progress.next_recommendation || '先完成一次问答或测验，系统会给出下一步推荐') + '</h4></div>';
+    ).join('') : '<div class="course-card"><h4>' + esc(reportAdvice) + '</h4></div>';
     const masterySection = masteryItems.length ? '<div class="lr-section"><div class="lr-section-title">知识点掌握度</div><div style="display:grid;gap:8px">' + masteryItems.slice(0,8).map(function(m){
       const score = Math.max(0, Math.min(100, Math.round(Number(m.mastery_score || 0) * 100)));
       return '<div class="course-card"><h4>' + esc(m.knowledge_point || '知识点') + '</h4><div style="height:8px;background:var(--gray-200);border-radius:999px;overflow:hidden"><div style="height:100%;width:' + score + '%;background:linear-gradient(90deg,var(--primary),var(--success))"></div></div><div class="course-meta" style="margin-top:6px"><span>掌握度 ' + score + '%</span><span>' + esc(m.recommended_action || '') + '</span></div></div>';
@@ -1973,12 +2049,12 @@ async function loadLearningReportPage(){
     const insightSection = _learningReportInsights(report, wrongItems, bookmarks, audits, masteryItems, accuracy, rate);
     el.innerHTML = '<div class="card"><div class="card-header"><h3>学习报告</h3><button class="btn btn-sm btn-outline" onclick="loadLearningReportPage()">🔄 刷新</button></div>' +
       '<div class="lr-summary">' +
-      '<div class="lr-stat"><span class="lr-stat-value">' + rate + '%</span><span class="lr-stat-label">完成率</span></div>' +
+      '<div class="lr-stat"><span class="lr-stat-value">' + rate + '%</span><span class="lr-stat-label">课程路径完成率</span></div>' +
       '<div class="lr-stat"><span class="lr-stat-value">' + wrongCount + '</span><span class="lr-stat-label">错题数</span></div>' +
       '<div class="lr-stat"><span class="lr-stat-value">' + bookmarkCount + '</span><span class="lr-stat-label">收藏数</span></div>' +
       (accuracy !== null ? '<div class="lr-stat"><span class="lr-stat-value">' + accuracy + '%</span><span class="lr-stat-label">测验正确率</span></div>' : '') +
       '<div class="lr-stat"><span class="lr-stat-value">' + masteryLabel + '</span><span class="lr-stat-label">平均掌握度</span></div>' +
-      '</div>' +
+      '</div>' + _reportMetricNote(rate, wrongCount, masteryLabel) +
       '<div class="lr-section"><div class="lr-section-title">画像驱动建议</div>' + actionCards +
       '<div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap"><button class="btn btn-sm btn-primary" onclick="navTo(\'assistant\')">按薄弱点继续学习</button><button class="btn btn-sm btn-outline" onclick="quickGenerateFromChat(&quot;study_plan&quot;, ' + jsAttrArg((weakPoints && weakPoints[0]) || '函数极限') + ')">生成下一阶段路径</button><button class="btn btn-sm btn-outline" onclick="navTo(\'wrong-book\')">复盘错题</button><button class="btn btn-sm btn-outline" onclick="navTo(\'resource-center\')">查看学习资料</button></div></div>' +
       insightSection +
@@ -2279,9 +2355,11 @@ async function streamAsk(payload, onToken){
 }
 
 async function sendQuestion(){
+  if (S.askBusy) return toast('上一条问题仍在生成中，请稍等', 'info');
   const input = document.getElementById('chat-input');
   const msg = input ? input.value.trim() : '';
   if (!msg) return toast('请输入问题', 'info');
+  _setAskBusy(true);
   S.lastQuestion = msg;
   S.lastTopic = msg;
   const box = document.getElementById('chat-messages');
@@ -2289,7 +2367,8 @@ async function sendQuestion(){
   if (input) input.value = '';
 
   const typingId = 'typing-' + Date.now();
-  if (box) box.innerHTML += '<div class="msg-bubble agent" id="' + typingId + '"><div class="msg-content">正在检索课程资料并生成回答...</div></div>';
+  if (box) box.innerHTML += '<div class="msg-bubble agent" id="' + typingId + '"><div class="msg-content"></div></div>';
+  const waitTimer = _startAskWaiting(typingId);
 
   const sessionSelect = document.getElementById('session-select');
   const sessionId = sessionSelect && sessionSelect.value ? Number(sessionSelect.value) : null;
@@ -2301,14 +2380,16 @@ async function sendQuestion(){
       const d = await streamAsk(payload, function(token){
         full += token;
         const ce = document.querySelector('#' + typingId + ' .msg-content');
-        if (ce) ce.textContent = full || '正在生成回答...';
+        if (ce && full) ce.textContent = full;
         if (box) box.scrollTop = box.scrollHeight;
       });
       d.answer = d.answer || full;
       if (!d.answer) {
+        _stopAskWaiting(waitTimer);
         _showAskError(typingId, '后端未返回有效答案，请稍后重试');
         return;
       }
+      _stopAskWaiting(waitTimer);
       _finishAskResponse(document.getElementById(typingId), msg, d, box);
       return;
     } catch (streamErr) {
@@ -2321,20 +2402,26 @@ async function sendQuestion(){
     const r = await api('/api/app/ask', { method: 'POST', body: JSON.stringify(payload) });
     if (!r.ok) {
       const detail = (r.data && (r.data.detail || r.data.message)) || ('HTTP ' + r.status);
+      _stopAskWaiting(waitTimer);
       _showAskError(typingId, typeof detail === 'string' ? detail : JSON.stringify(detail));
       toast('问答请求失败，请检查后端服务或模型配置', 'info');
       return;
     }
     const d = unwrapApi(r);
     if (!d.answer) {
+      _stopAskWaiting(waitTimer);
       _showAskError(typingId, '后端未返回有效答案，请稍后重试');
       return;
     }
+    _stopAskWaiting(waitTimer);
     _finishAskResponse(document.getElementById(typingId), msg, d, box);
     return;
   } catch (e) {
+    _stopAskWaiting(waitTimer);
     _showAskError(typingId, e.message || '网络错误');
     toast('问答服务暂时不可用', 'info');
+  } finally {
+    _setAskBusy(false);
   }
 }
 

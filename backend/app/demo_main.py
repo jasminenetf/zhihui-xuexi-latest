@@ -155,6 +155,24 @@ GAOSHU_COURSE_DESCRIPTION = (
     "内置《高数上.pdf》学习辅助课程，覆盖函数与极限、导数与微分、"
     "微分中值定理与导数应用、不定积分、定积分、定积分应用和微分方程。"
 )
+QA_TEST_MARKERS = ("QA_TEST_", "P0_SMOKE_", "TEMP_QA_", "P0 Smoke", "verify_", "测试课程")
+
+
+def _is_qa_test_text(*values: Any) -> bool:
+    text = " ".join(str(v or "") for v in values)
+    lowered = text.lower()
+    return any(marker.lower() in lowered for marker in QA_TEST_MARKERS)
+
+
+def _visible_demo_items(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    visible: list[dict[str, Any]] = []
+    for item in items or []:
+        if not isinstance(item, dict):
+            continue
+        if _is_qa_test_text(*item.values()):
+            continue
+        visible.append(item)
+    return visible
 
 GAOSHU_CHAPTERS = [
     {"title": "第一章 函数与极限", "page": 16, "points": ["函数", "数列极限", "函数极限", "无穷小与无穷大", "连续性"]},
@@ -2875,7 +2893,7 @@ def download_resource(resource_id: str):
 
 @app.get("/api/sessions")
 def sessions(course_id: int = 1):
-    return {"sessions": STATE["sessions"]}
+    return {"sessions": _visible_demo_items(STATE["sessions"])}
 
 
 @app.post("/api/sessions")
@@ -2897,7 +2915,7 @@ def progress():
 
 @app.get("/api/analytics/wrong-book")
 def wrong_book():
-    return {"items": STATE["wrong_book"]}
+    return {"items": _visible_demo_items(STATE["wrong_book"])}
 
 
 @app.get("/api/analytics/bookmarks")
@@ -2963,7 +2981,7 @@ def _record_demo_mastery(knowledge_point: str, score: float, source: str) -> dic
 
 def _demo_mastery_items() -> list[dict[str, Any]]:
     latest: dict[str, dict[str, Any]] = {}
-    for row in STATE.get("wrong_book", []):
+    for row in _visible_demo_items(STATE.get("wrong_book", [])):
         kp = str(row.get("knowledge_point") or row.get("topic") or "").strip()
         mastery_payload = row.get("mastery") if isinstance(row.get("mastery"), dict) else {}
         score = _valid_mastery_score(row.get("mastery_score") or mastery_payload.get("mastery_score"))
@@ -2974,7 +2992,7 @@ def _demo_mastery_items() -> list[dict[str, Any]]:
                 "wrong_count": 1,
                 "recommended_action": "先复盘错题解析，再做同主题练习",
             }
-    for row in STATE.get("mastery_records", []):
+    for row in _visible_demo_items(STATE.get("mastery_records", [])):
         kp = str(row.get("knowledge_point") or "").strip()
         score = _valid_mastery_score(row.get("mastery_score"))
         if kp and score is not None:
@@ -3015,7 +3033,7 @@ def _demo_mastery_overview(mastery_items: list[dict[str, Any]]) -> dict[str, Any
 
 @app.get("/api/app/learning-report")
 def learning_report(course_id: int = 1):
-    wrong_items = STATE.get("wrong_book", [])
+    wrong_items = _visible_demo_items(STATE.get("wrong_book", []))
     bookmarks = STATE.get("bookmarks", [])
     generated_study_plans = sum(1 for item in STATE.get("resources", []) if (item.get("resource_type") or item.get("type")) == "study_plan")
     study_plan_count = generated_study_plans + len(STATE.get("study_plan_events", []))
@@ -3134,7 +3152,7 @@ def profile_restore(version_id: str):
 @app.get("/api/courses")
 def courses():
     primary = {"id": 1, "name": STATE["course_name"], "description": GAOSHU_COURSE_DESCRIPTION, "chapters": GAOSHU_CHAPTERS}
-    return [primary, *STATE["extra_courses"]]
+    return [primary, *_visible_demo_items(STATE["extra_courses"])]
 
 
 @app.post("/api/courses")

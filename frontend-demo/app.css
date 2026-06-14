@@ -347,6 +347,14 @@ a{color:var(--primary);text-decoration:none}
 @keyframes spin{to{transform:rotate(360deg)}}
 .loading-block{text-align:center;padding:40px;color:var(--gray-500)}
 .loading-block .spinner{margin-right:8px}
+.btn.is-loading{opacity:.82;cursor:wait}
+.ask-wait-card{display:grid;gap:10px}
+.ask-wait-title{display:flex;align-items:center;gap:8px;color:var(--gray-800)}
+.ask-wait-steps{display:flex;flex-wrap:wrap;gap:6px}
+.ask-wait-steps span{font-size:12px;color:var(--gray-500);background:var(--gray-100);border:1px solid var(--gray-200);border-radius:999px;padding:4px 8px}
+.ask-wait-steps span.active{color:var(--primary);background:rgba(79,70,229,.08);border-color:rgba(79,70,229,.22)}
+.ask-wait-note,.metric-note{font-size:12px;line-height:1.6;color:var(--gray-600);background:#f8fafc;border:1px solid var(--gray-200);border-radius:8px;padding:8px 10px}
+.ask-wait-note.strong{color:#92400e;background:#fff7ed;border-color:#fed7aa}
 .toast{position:fixed;top:60px;right:20px;z-index:9999;padding:10px 16px;border-radius:6px;font-size:13px;box-shadow:0 4px 12px rgba(0,0,0,.15);animation:slideIn .3s ease;max-width:360px}
 .toast.success{background:var(--success-bg);color:var(--success);border:1px solid #a7f3d0}
 .toast.error{background:var(--danger-bg);color:var(--danger);border:1px solid #fecaca}

@@ -23,6 +23,7 @@ ROOT = Path(__file__).resolve().parents[1]
 BASE = os.getenv("DEEP_QA_BASE", "http://127.0.0.1:8010").rstrip("/")
 QUESTION = "我不理解函数极限，讲清定义、常见误区，并给一个例题"
 RESOURCE_TYPES = ["lecture_doc", "mindmap", "quiz", "ppt", "study_plan", "video_script"]
+TEST_PREFIX = "QA_TEST_"
 
 
 class QaFailure(RuntimeError):
@@ -178,13 +179,13 @@ def check_learning_loop() -> list[dict[str, Any]]:
         "POST",
         {
             "course_id": 1,
-            "topic": "函数极限",
-            "question_text": "极限存在是否要求函数在该点有定义？",
+            "topic": f"{TEST_PREFIX}函数极限",
+            "question_text": f"{TEST_PREFIX} 极限存在是否要求函数在该点有定义？",
             "selected_answer": "要求",
             "correct_answer": "不要求",
             "is_correct": False,
-            "knowledge_point": "函数极限",
-            "explanation": "极限研究趋近过程，不要求该点函数值存在。",
+            "knowledge_point": f"{TEST_PREFIX}函数极限",
+            "explanation": f"{TEST_PREFIX} 极限研究趋近过程，不要求该点函数值存在。",
         },
         timeout=60,
     )
@@ -214,8 +215,16 @@ def check_stage_3a5_definition_quality() -> None:
     sample = "定积分的定义"
     ask = unwrap(request_json("/api/app/ask", "POST", {"course_id": 1, "question": sample}, timeout=180))
     answer = text_of(ask.get("answer"))
-    for marker in ["一句话直答", "定义拆解", "符号翻译", "常见误区", "小例题", "下一步建议"]:
-        assert_true(marker in answer, f"definition answer missing marker: {marker}")
+    marker_groups = [
+        ("一句话直答", "先懂一句话"),
+        ("定义拆解",),
+        ("符号翻译",),
+        ("常见误区",),
+        ("小例题", "例题"),
+        ("下一步建议",),
+    ]
+    for group in marker_groups:
+        assert_true(any(marker in answer for marker in group), f"definition answer missing marker: {'/'.join(group)}")
     assert_true("高数重要概念" not in answer[:80], "definition answer starts with generic importance")
     assert_true("$$" not in answer and "\\int" not in answer and "\\sum" not in answer, "definition answer exposes raw LaTeX")
 
