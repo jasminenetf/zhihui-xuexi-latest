@@ -37,7 +37,77 @@ const S = {
 const $ = (s) => document.querySelector(s);
 const $$ = (s) => Array.from(document.querySelectorAll(s));
 function esc(s){ return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+function formatMathText(text){
+  let s = String(text ?? '');
+  if (!s) return '';
+  s = s.replace(/```(?:markdown|latex|text)?\s*/gi, '').replace(/```/g, '');
+  s = s.replace(/\$\$([\s\S]*?)\$\$/g, '$1').replace(/\$([^$\n]+)\$/g, '$1');
+  s = s.replace(/\\\(([\s\S]*?)\\\)/g, '$1').replace(/\\\[([\s\S]*?)\\\]/g, '$1');
+  s = s.replace(/^#{1,6}\s*/gm, '').replace(/\*\*([^*]+)\*\*/g, '$1').replace(/__([^_]+)__/g, '$1');
+  s = s.replace(/\\frac\{([^{}]+)\}\{([^{}]+)\}/g, '($1)/($2)');
+  s = s.replace(/\\sqrt\{([^{}]+)\}/g, '√($1)');
+  s = s.replace(/\\int_?\{?([^{}\s^]+)?\}?\^?\{?([^{}\s]+)?\}?/g, function(_, a, b){
+    return a && b ? '∫[' + a + ',' + b + ']' : '∫';
+  });
+  s = s.replace(/\\lim_\{?([^{}]+?)\}?/g, function(_, inner){
+    return 'lim(' + inner.replace(/\\to/g, '→').replace(/\s+/g, '') + ')';
+  });
+  s = s.replace(/\\sum_\{?([^{}]+?)\}?\^?\{?([^{}\s]+)?\}?/g, function(_, a, b){
+    return b ? 'Σ(' + a.replace(/\s+/g, '') + ' 到 ' + b + ')' : 'Σ';
+  });
+  const pairs = [
+    [/\\int/g, '∫'], [/\\sum/g, 'Σ'], [/\\lim/g, 'lim'], [/\\to/g, '→'], [/\\infty/g, '∞'],
+    [/\\Delta/g, 'Δ'], [/\\xi/g, 'ξ'], [/\\cdot/g, '·'], [/\\times/g, '×'],
+    [/\\leq?|\\le/g, '≤'], [/\\geq?|\\ge/g, '≥'], [/\\ne(q)?/g, '≠'], [/\\approx/g, '≈'],
+    [/\\,/g, ' '], [/\\;/g, ' '], [/\\!/g, ''], [/\\left|\\right/g, ''],
+  ];
+  pairs.forEach(function(p){ s = s.replace(p[0], p[1]); });
+  s = s.replace(/_([a-zA-Z0-9]+)/g, '₍$1₎').replace(/\^([a-zA-Z0-9]+)/g, '^$1');
+  s = s.replace(/\\([a-zA-Z]+)/g, '$1');
+  s = s.replace(/[ \t]{2,}/g, ' ');
+  return s.trim();
+}
+function fmtEsc(s){ return esc(formatMathText(s)); }
 function jsAttrArg(s){ return JSON.stringify(String(s ?? '')).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+function parseStructuredAnswer(text){
+  const raw = String(text || '');
+  const keys = ['一句话直答', '定义拆解', '符号翻译', '常见误区', '小例题', '下一步建议'];
+  if (!keys.every(k => raw.indexOf(k) >= 0)) return null;
+  const parts = {};
+  keys.forEach(function(k, i){
+    const start = raw.indexOf(k);
+    const nextStarts = keys.slice(i + 1).map(n => raw.indexOf(n)).filter(n => n > start);
+    const end = nextStarts.length ? Math.min.apply(null, nextStarts) : raw.length;
+    let body = raw.slice(start + k.length, end).replace(/^[:：]\s*/, '').trim();
+    parts[k] = body;
+  });
+  return parts;
+}
+
+function _formatAnswerLines(text){
+  return String(text || '').split(/\n+/).map(s => s.trim()).filter(Boolean);
+}
+
+function renderStructuredAnswer(text){
+  const p = parseStructuredAnswer(text);
+  if (!p) return '<div class="msg-content">' + fmtEsc(text || '已收到问题，当前环境暂未返回正式答案。') + '</div>';
+  const listBlock = function(title, body, cls){
+    const lines = _formatAnswerLines(body);
+    const content = lines.length > 1
+      ? '<ul>' + lines.map(function(x){ return '<li>' + fmtEsc(x.replace(/^\d+[.、]\s*/, '').replace(/^[-•]\s*/, '')) + '</li>'; }).join('') + '</ul>'
+      : '<p>' + fmtEsc(body) + '</p>';
+    return '<div class="answer-card ' + (cls || '') + '"><h4>' + esc(title) + '</h4>' + content + '</div>';
+  };
+  return '<div class="structured-answer">' +
+    '<div class="answer-card answer-highlight"><h4>先懂一句话</h4><p>' + fmtEsc(p['一句话直答']) + '</p></div>' +
+    listBlock('定义拆解', p['定义拆解'], '') +
+    listBlock('符号翻译', p['符号翻译'], '') +
+    listBlock('常见误区', p['常见误区'], 'answer-warning') +
+    listBlock('小例题', p['小例题'], 'answer-example') +
+    '<div class="answer-card answer-next"><h4>下一步建议</h4><p>' + fmtEsc(p['下一步建议']) + '</p></div>' +
+  '</div>';
+}
 
 function _parseJsonList(raw){
   if (!raw) return [];
@@ -400,6 +470,43 @@ function _resourceUseText(type){
     reading: '适合补充背景和拓展理解',
   };
   return map[type] || '适合当前主题的个性化学习';
+}
+
+function _resourceNextActionButtons(type, topic){
+  const map = {
+    lecture_doc: [
+      ['mindmap', '继续生成思维导图'],
+      ['quiz', '开始练习'],
+      ['study_plan', '加入学习路径'],
+    ],
+    mindmap: [
+      ['quiz', '按导图做 3 道练习'],
+      ['lecture_doc', '生成讲义'],
+      ['study_plan', '加入学习路径'],
+    ],
+    quiz: [
+      ['quiz', '开始练习'],
+      ['wrong-book', '查看错题本'],
+      ['lecture_doc', '生成针对性复习'],
+    ],
+    ppt: [
+      ['quiz', '用这份 PPT 生成练习题'],
+      ['study_plan', '加入学习路径'],
+    ],
+    study_plan: [
+      ['lecture_doc', '生成配套资源'],
+      ['quiz', '完成后复测'],
+    ],
+    video_script: [
+      ['video_script', '查看脚本'],
+      ['ppt', '生成配套 PPT'],
+      ['quiz', '生成配套练习题'],
+    ],
+  };
+  return (map[type] || [['quiz', '继续练习'], ['study_plan', '加入路径']]).map(function(item){
+    if (item[0] === 'wrong-book') return '<button class="btn btn-sm btn-outline" onclick="navTo(\'wrong-book\')">' + esc(item[1]) + '</button>';
+    return '<button class="btn btn-sm btn-outline" onclick="quickGenerateFromChat(' + jsAttrArg(item[0]) + ', ' + jsAttrArg(topic) + ')">' + esc(item[1]) + '</button>';
+  }).join('');
 }
 
 function _pageHero(title, subtitle, actionsHtml){
@@ -1028,10 +1135,10 @@ function _renderQuizPanel(el, items, topic){
   S.currentQuiz = { topic: topic || '', items: quizItems };
   el.innerHTML = quizItems.map((it, idx) => {
     const opts = (it.options || []).map((o, oi) =>
-      '<label style="display:block;margin:4px 0"><input type="radio" name="quiz-' + idx + '" value="' + oi + '"> ' + esc(o) + '</label>'
+      '<label style="display:block;margin:4px 0"><input type="radio" name="quiz-' + idx + '" value="' + oi + '"> ' + fmtEsc(o) + '</label>'
     ).join('');
-    return '<div class="course-card" data-quiz-idx="' + idx + '"><h4>Q' + (idx + 1) + '. ' + esc(it.question || '') + '</h4>' + opts +
-      '<div class="course-meta"><span>知识点 ' + esc(it.knowledge_point || topic || '当前主题') + '</span><span>提交后自动写入掌握度</span></div>' +
+    return '<div class="course-card" data-quiz-idx="' + idx + '"><h4>Q' + (idx + 1) + '. ' + fmtEsc(it.question || '') + '</h4>' + opts +
+      '<div class="course-meta"><span>知识点 ' + fmtEsc(it.knowledge_point || topic || '当前主题') + '</span><span>提交后自动写入掌握度</span></div>' +
       '<div class="quiz-inline-feedback" id="quiz-feedback-' + idx + '"></div>' +
       '<button class="btn btn-sm btn-primary" style="margin-top:8px" onclick="submitQuizAnswer(' + idx + ')">提交本题</button></div>';
   }).join('');
@@ -1052,10 +1159,10 @@ function _renderQuizFeedback(idx, item, selectedIdx, isCorrect){
   el.innerHTML =
     '<div class="' + (isCorrect ? 'quiz-feedback show correct-fb' : 'quiz-feedback show wrong-fb') + '" style="display:block;margin-top:10px">' +
       '<div style="font-weight:700;margin-bottom:6px">' + esc(title) + '</div>' +
-      '<div style="line-height:1.7"><strong>你的选择：</strong>' + esc(selectedText) + '</div>' +
-      '<div style="line-height:1.7"><strong>正确答案：</strong>' + esc(correctText) + '</div>' +
-      '<div style="line-height:1.7;margin-top:6px"><strong>为什么：</strong>' + esc(why) + '</div>' +
-      '<div style="line-height:1.7;margin-top:6px"><strong>怎么补：</strong>' + esc(fix) + '</div>' +
+      '<div style="line-height:1.7"><strong>你的选择：</strong>' + fmtEsc(selectedText) + '</div>' +
+      '<div style="line-height:1.7"><strong>正确答案：</strong>' + fmtEsc(correctText) + '</div>' +
+      '<div style="line-height:1.7;margin-top:6px"><strong>为什么：</strong>' + fmtEsc(why) + '</div>' +
+      '<div style="line-height:1.7;margin-top:6px"><strong>怎么补：</strong>' + fmtEsc(fix) + '</div>' +
       '<div style="margin-top:8px;display:flex;gap:6px;flex-wrap:wrap">' +
         '<button class="btn btn-sm btn-outline" onclick="loadArtifactPreview(&quot;lecture_doc&quot;, ' + jsAttrArg(item.knowledge_point || S.currentQuiz.topic || _currentLearningTopic()) + ')">看详细讲义</button>' +
         '<button class="btn btn-sm btn-outline" onclick="loadArtifactPreview(&quot;mindmap&quot;, ' + jsAttrArg(item.knowledge_point || S.currentQuiz.topic || _currentLearningTopic()) + ')">看知识结构</button>' +
@@ -1090,50 +1197,51 @@ function _renderPptPanel(el, d){
   const calloutCss = 'border-left:5px solid #4f46e5;background:#eef2ff;border-radius:8px;padding:9px 12px;font-size:13px;line-height:1.45;color:#1e293b;max-height:64px;overflow:hidden';
   const notesCss = 'border-top:1px solid #e5e7eb;background:#fff;padding:12px 18px;font-size:12px;color:#64748b';
   el.innerHTML =
-    '<div class="course-card"><h4>' + esc(title) + '</h4><div class="course-meta"><span>共 ' + esc(String(slideCount)) + ' 页</span><span>课堂演示版 PPT</span><span>中间区域按幻灯片展示</span></div><div style="margin-top:8px">' + _resourceDownloadBtn(null, d.download_url, title + '.md').replace('>下载<', '>下载教学稿<') + '</div></div>' +
+    '<div class="course-card"><h4>' + fmtEsc(title) + '</h4><div class="course-meta"><span>共 ' + esc(String(slideCount)) + ' 页</span><span>学生辅助学习版 PPT</span><span>每页含目标、结论、自测</span></div><div style="margin-top:8px">' + _resourceDownloadBtn(null, d.download_url, title + '.md').replace('>下载<', '>下载学习稿<') + '</div></div>' +
     (slides.length ? slides.map(function(s, i){
-      const bullets = (s.bullets || s.points || []).slice(0, 3);
-      const titleText = s.title || s.heading || '课件页';
+      const bullets = (s.key_points || s.bullets || s.points || []).slice(0, 4);
+      const titleText = s.slide_title || s.title || s.heading || '课件页';
       const subtitle = s.student_problem || s.content || '';
-      const lead = s.lead_in || '';
-      const visual = s.plain_explanation || s.visual_metaphor || s.formal_definition || '';
-      const activity = s.mini_activity || '';
-      const takeaway = s.takeaway || s.next_action || '';
-      const example = s.worked_example && s.worked_example.problem ? s.worked_example.problem : '';
-      const stepExample = Array.isArray(s.step_by_step_solution) ? s.step_by_step_solution.join(' / ') : '';
+      const lead = s.slide_goal || s.lead_in || '';
+      const visual = s.visual_hint || s.teacher_in_plain_words || s.plain_explanation || s.visual_metaphor || s.formal_definition || '';
+      const activity = s.self_check || s.mini_activity || '';
+      const takeaway = s.key_takeaway || s.takeaway || s.next_action || '';
+      const exampleObj = s.example || s.worked_example || {};
+      const example = exampleObj.question || exampleObj.problem || '';
+      const stepExample = Array.isArray(exampleObj.steps) ? exampleObj.steps.join(' / ') : (Array.isArray(s.step_by_step_solution) ? s.step_by_step_solution.join(' / ') : '');
       const mistake = s.common_mistake || s.why_wrong || s.how_to_fix || '';
-      const callout = s.check_question || '';
+      const callout = s.self_check || s.check_question || '';
       const sections = Array.isArray(s.learning_sections) ? s.learning_sections.slice(0, 2) : [];
       const leftSection = sections[0];
       const rightSection = sections[1];
       const renderLearningSection = function(sec, fallbackTitle, fallbackBody){
-        if (!sec) return '<div style="' + panelTitleCss + '">' + esc(fallbackTitle) + '</div><p style="' + smallTextCss + '">' + esc(fallbackBody) + '</p>';
+        if (!sec) return '<div style="' + panelTitleCss + '">' + esc(fallbackTitle) + '</div><p style="' + smallTextCss + '">' + fmtEsc(fallbackBody) + '</p>';
         const items = Array.isArray(sec.items) ? sec.items.slice(0, 4) : [];
         return '<div style="' + panelTitleCss + '">' + esc(sec.title || fallbackTitle) + '</div>' +
-          (items.length ? items.map(function(it){ return '<div style="' + sectionItemCss + '">• ' + esc(it) + '</div>'; }).join('') : '<p style="' + smallTextCss + '">' + esc(sec.summary || fallbackBody) + '</p>');
+          (items.length ? items.map(function(it){ return '<div style="' + sectionItemCss + '">• ' + fmtEsc(it) + '</div>'; }).join('') : '<p style="' + smallTextCss + '">' + fmtEsc(sec.summary || fallbackBody) + '</p>');
       };
       const notes = [
-        (s.teacher_script || s.speaker_notes) ? '<strong>讲课提示：</strong>' + esc(s.teacher_script || s.speaker_notes) : '',
-        example ? '<strong>例题：</strong>' + esc(example) : '',
-        stepExample ? '<strong>例题步骤：</strong>' + esc(stepExample) : '',
-        mistake ? '<strong>易错提醒：</strong>' + esc(mistake) : '',
-        s.next_action ? '<strong>下一步行动：</strong>' + esc(s.next_action) : '',
-        (s.board_work || []).length ? '<strong>板书：</strong>' + esc((s.board_work || []).join(' / ')) : '',
+        (s.teacher_in_plain_words || s.teacher_script || s.speaker_notes) ? '<strong>人话讲解：</strong>' + fmtEsc(s.teacher_in_plain_words || s.teacher_script || s.speaker_notes) : '',
+        example ? '<strong>例题：</strong>' + fmtEsc(example) : '',
+        stepExample ? '<strong>例题步骤：</strong>' + fmtEsc(stepExample) : '',
+        mistake ? '<strong>易错提醒：</strong>' + fmtEsc(mistake) : '',
+        s.next_action ? '<strong>下一步行动：</strong>' + fmtEsc(s.next_action) : '',
+        (s.board_work || []).length ? '<strong>板书：</strong>' + fmtEsc((s.board_work || []).join(' / ')) : '',
       ].filter(Boolean).join('<br>');
       return '<section style="' + slideCss + '">' +
         '<div data-ppt-canvas="1" style="' + frameCss + '">' +
           '<div style="' + canvasCss + '">' +
             '<span style="' + badgeCss + '">第 ' + (i + 1) + ' / ' + esc(String(slideCount)) + ' 页</span>' +
-            '<h2 style="' + titleCss + '">' + esc(titleText) + '</h2>' +
-            (subtitle ? '<p style="' + subtitleCss + '">' + esc(subtitle) + '</p>' : '') +
-            (lead ? '<div style="' + leadCss + '">课堂导入：' + esc(lead) + '</div>' : '') +
+            '<h2 style="' + titleCss + '">' + fmtEsc(titleText) + '</h2>' +
+            (subtitle ? '<p style="' + subtitleCss + '">' + fmtEsc(subtitle) + '</p>' : '') +
+            (lead ? '<div style="' + leadCss + '">本页目标：' + fmtEsc(lead) + '</div>' : '') +
             '<div style="' + gridCss + '">' +
-              '<div style="' + panelCss + '">' + (sections.length ? renderLearningSection(leftSection, '本页讲清楚', subtitle || titleText) : '<div style="' + panelTitleCss + '">本页讲清楚</div>' + (bullets.length ? '<ul style="' + bulletCss + '">' + bullets.map(function(x){ return '<li>' + esc(x) + '</li>'; }).join('') + '</ul>' : '<p style="' + smallTextCss + '">' + esc(subtitle || titleText) + '</p>')) + '</div>' +
-              '<div style="' + panelCss + '">' + (sections.length ? renderLearningSection(rightSection, '老师怎么讲', visual || example || callout || '先讲直观含义，再落到定义、条件和例题。') : '<div style="' + panelTitleCss + '">老师怎么讲</div><p style="' + smallTextCss + '">' + esc(visual || example || callout || '先讲直观含义，再落到定义、条件和例题。') + '</p>') + '</div>' +
+              '<div style="' + panelCss + '">' + (sections.length ? renderLearningSection(leftSection, '本页关键内容', subtitle || titleText) : '<div style="' + panelTitleCss + '">本页关键内容</div>' + (bullets.length ? '<ul style="' + bulletCss + '">' + bullets.map(function(x){ return '<li>' + fmtEsc(x) + '</li>'; }).join('') + '</ul>' : '<p style="' + smallTextCss + '">' + fmtEsc(subtitle || titleText) + '</p>')) + '</div>' +
+              '<div style="' + panelCss + '">' + (sections.length ? renderLearningSection(rightSection, '看图/理解提示', visual || example || callout || '先讲直观含义，再落到定义、条件和例题。') : '<div style="' + panelTitleCss + '">看图/理解提示</div><p style="' + smallTextCss + '">' + fmtEsc(visual || example || callout || '先讲直观含义，再落到定义、条件和例题。') + '</p>') + '</div>' +
             '</div>' +
             '<div style="' + activityCss + '">' +
-              '<div style="' + calloutCss + '">' + esc(activity || callout || '请学生先说思路，再看标准步骤。') + '</div>' +
-              '<div style="' + calloutCss + '"><strong>本页收获：</strong>' + esc(takeaway || callout || '知道这一步为什么这样做。') + '</div>' +
+              '<div style="' + calloutCss + '"><strong>小自测：</strong>' + fmtEsc(activity || callout || '请先说思路，再看标准步骤。') + '</div>' +
+              '<div style="' + calloutCss + '"><strong>本页关键结论：</strong>' + fmtEsc(takeaway || callout || '知道这一步为什么这样做。') + '</div>' +
             '</div>' +
           '</div>' +
         '</div>' +
@@ -1146,22 +1254,52 @@ function _renderTextResourcePanel(el, d, type){
   if (!el) return;
   const content = typeof d.content === 'object' ? JSON.stringify(d.content, null, 2) : (d.content || '内容生成完成');
   const title = d.title || (type === 'reading' ? '拓展阅读' : (type === 'video_script' ? '视频脚本' : '学习讲义'));
+  if (type === 'lecture_doc' && d.lecture_doc && typeof d.lecture_doc === 'object') {
+    const doc = d.lecture_doc;
+    const symbols = Array.isArray(doc.symbol_translation_items) ? doc.symbol_translation_items : [];
+    const distinctions = Array.isArray(doc.key_distinctions) ? doc.key_distinctions : [];
+    const ex = doc.worked_example || {};
+    const mistakes = Array.isArray(doc.common_mistakes) ? doc.common_mistakes : [];
+    const checks = Array.isArray(doc.quick_self_check) ? doc.quick_self_check : [];
+    el.innerHTML =
+      '<div class="course-card"><h4>' + fmtEsc(doc.title || title) + '</h4><div class="course-meta"><span>结构化学习讲义</span><span>面向不会的学生</span><span>按定义到练习顺序阅读</span></div></div>' +
+      '<div class="course-card"><h4>1. 这次要解决的问题</h4><p class="learning-text">' + fmtEsc(doc.learning_problem || '') + '</p></div>' +
+      '<div class="course-card lecture-highlight"><h4>2. 一句话先懂</h4><p class="learning-text strong">' + fmtEsc(doc.one_sentence_answer || '') + '</p></div>' +
+      '<div class="course-card"><h4>3. 人话直觉</h4><p class="learning-text">' + fmtEsc(doc.intuition_explainer || '') + '</p></div>' +
+      '<div class="course-card"><h4>4. 正式定义</h4><p class="learning-text">' + fmtEsc(doc.formal_definition || '') + '</p></div>' +
+      '<div class="course-card"><h4>5. 符号翻译</h4>' + (symbols.length ? '<div class="symbol-table">' + symbols.map(function(x){ return '<div><strong>' + fmtEsc(x.symbol || '') + '</strong><span>' + fmtEsc(x.meaning || '') + '</span><em>' + fmtEsc(x.student_tip || '') + '</em></div>'; }).join('') + '</div>' : '<p class="learning-text">暂无符号项</p>') + '</div>' +
+      '<div class="course-card"><h4>6. 关键区别</h4><ul class="learning-list">' + distinctions.map(function(x){ return '<li>' + fmtEsc(x) + '</li>'; }).join('') + '</ul></div>' +
+      '<div class="course-card example-card"><h4>7. 完整例题</h4><p class="learning-text"><strong>题目：</strong>' + fmtEsc(ex.question || '') + '</p><p class="learning-text"><strong>思路：</strong>' + fmtEsc(ex.idea || '') + '</p><ol class="learning-list">' + ((ex.steps || []).map(function(x){ return '<li>' + fmtEsc(x) + '</li>'; }).join('')) + '</ol><p class="learning-text"><strong>答案：</strong>' + fmtEsc(ex.answer || '') + '</p><p class="learning-text"><strong>解释：</strong>' + fmtEsc(ex.explanation || '') + '</p></div>' +
+      '<div class="course-card warning-card"><h4>8. 常见误区</h4>' + mistakes.map(function(x){ return '<div class="mistake-item"><strong>' + fmtEsc(x.mistake || '') + '</strong><p>' + fmtEsc(x.why_wrong || '') + '</p><p>修正：' + fmtEsc(x.how_to_fix || '') + '</p></div>'; }).join('') + '</div>' +
+      '<div class="course-card"><h4>9. 快速自测</h4>' + checks.map(function(x){ return '<div class="self-check-item"><strong>' + fmtEsc(x.type || '自测') + '：</strong>' + fmtEsc(x.question || '') + '<p>答案：' + fmtEsc(x.answer || '') + '</p><p>解析：' + fmtEsc(x.explanation || '') + '</p></div>'; }).join('') + '</div>' +
+      '<div class="course-card"><h4>10. 下一步学什么</h4><p class="learning-text">' + fmtEsc(doc.next_step || '') + '</p></div>';
+    return;
+  }
   if (type === 'video_script') {
-    const scenes = content.split(/\n\s*\n|(?=镜头\s*\d+)|(?=场景\s*\d+)|(?=分镜\s*\d+)|(?=Scene\s*\d+)/i).map(s => s.trim()).filter(Boolean).slice(0, 8);
-    el.innerHTML = '<div class="course-card"><h4>' + esc(title) + '</h4><div class="course-meta"><span>视频脚本分镜</span><span>' + scenes.length + ' 个片段</span><span>适合录制讲解视频</span></div></div>' +
-      (scenes.length ? scenes.map(function(s, i){ return '<div class="course-card"><h4>🎬 分镜 ' + (i + 1) + '</h4><div class="course-meta"><span>建议时长 30-60 秒</span><span>画面 + 旁白</span></div><div style="white-space:pre-wrap;font-size:13px;line-height:1.65;margin-top:8px">' + esc(s) + '</div></div>'; }).join('') : '<div class="course-card"><div style="white-space:pre-wrap;font-size:13px;line-height:1.65">' + esc(content) + '</div></div>');
+    const structuredScenes = Array.isArray(d.scenes) ? d.scenes : [];
+    const textScenes = structuredScenes.length ? [] : content.split(/\n\s*\n|(?=镜头\s*\d+)|(?=场景\s*\d+)|(?=分镜\s*\d+)|(?=Scene\s*\d+)/i).map(s => s.trim()).filter(Boolean).slice(0, 8);
+    const scenesHtml = structuredScenes.length
+      ? structuredScenes.map(function(s, i){
+          return '<div class="course-card"><h4>🎬 分镜 ' + esc(String(s.scene_index || (i + 1))) + '：' + fmtEsc(s.title || '讲解片段') + '</h4>' +
+            '<div class="course-meta"><span>建议时长 ' + esc(String(s.duration_seconds || 45)) + ' 秒</span><span>画面 + 旁白 + 板书</span></div>' +
+            '<div style="font-size:13px;line-height:1.7;margin-top:8px"><p><strong>画面：</strong>' + fmtEsc(s.visual || '') + '</p><p><strong>旁白：</strong>' + fmtEsc(s.voiceover || '') + '</p><p><strong>板书：</strong>' + fmtEsc(s.board_text || '') + '</p><p><strong>互动：</strong>' + fmtEsc(s.interaction || '') + '</p><p><strong>易错提醒：</strong>' + fmtEsc(s.pitfall_tip || '') + '</p></div></div>';
+        }).join('')
+      : (textScenes.length ? textScenes.map(function(s, i){ return '<div class="course-card"><h4>🎬 分镜 ' + (i + 1) + '</h4><div class="course-meta"><span>建议时长 30-60 秒</span><span>画面 + 旁白</span></div><div style="white-space:pre-wrap;font-size:13px;line-height:1.65;margin-top:8px">' + fmtEsc(s) + '</div></div>'; }).join('') : '<div class="course-card"><div style="white-space:pre-wrap;font-size:13px;line-height:1.65">' + fmtEsc(content) + '</div></div>');
+    const videoMeta = d.video_script || {};
+    el.innerHTML = '<div class="course-card"><h4>' + fmtEsc(title) + '</h4><div class="course-meta"><span>视频脚本分镜</span><span>' + (structuredScenes.length || textScenes.length) + ' 个片段</span><span>适合录制讲解视频</span></div>' +
+      '<p style="font-size:12px;color:var(--gray-500);line-height:1.6;margin-top:6px">' + fmtEsc(videoMeta.learning_problem || '围绕当前知识点讲清定义、误区和例题。') + '</p></div>' + scenesHtml;
     return;
   }
   const sections = String(content).split(/\n{2,}/).map(s => s.trim()).filter(Boolean).slice(0, 14);
   if (type === 'reading') {
     el.innerHTML = '<div class="course-card"><h4>' + esc(title) + '</h4><div class="course-meta"><span>拓展阅读</span><span>适合课后深化</span><span>可加入资源包</span></div></div>' +
-      sections.map(function(s, i){ return '<div class="course-card"><h4>' + esc(/^#{1,4}\s+/.test(s) ? s.replace(/^#{1,4}\s+/, '') : ('阅读片段 ' + (i + 1))) + '</h4><div style="white-space:pre-wrap;font-size:13px;line-height:1.7;margin-top:8px">' + esc(/^#{1,4}\s+/.test(s) ? '' : s) + '</div></div>'; }).join('');
+      sections.map(function(s, i){ return '<div class="course-card"><h4>' + fmtEsc(/^#{1,4}\s+/.test(s) ? s.replace(/^#{1,4}\s+/, '') : ('阅读片段 ' + (i + 1))) + '</h4><div style="white-space:pre-wrap;font-size:13px;line-height:1.7;margin-top:8px">' + fmtEsc(/^#{1,4}\s+/.test(s) ? '' : s) + '</div></div>'; }).join('');
     return;
   }
   el.innerHTML = '<div class="course-card"><h4>' + esc(title) + '</h4><div class="course-meta"><span>Markdown 讲义</span><span>可用于复习与做题前预习</span><span>结构化卡片</span></div></div>' +
     sections.map(function(s, i){
       const isHeading = /^#{1,4}\s+/.test(s);
-      return '<div class="course-card"><h4>' + esc(isHeading ? s.replace(/^#{1,4}\s+/, '') : ('讲义模块 ' + (i + 1))) + '</h4><div style="white-space:pre-wrap;font-size:13px;line-height:1.7;margin-top:8px">' + esc(isHeading ? '' : s) + '</div></div>';
+      return '<div class="course-card"><h4>' + fmtEsc(isHeading ? s.replace(/^#{1,4}\s+/, '') : ('学习片段 ' + (i + 1))) + '</h4><div style="white-space:pre-wrap;font-size:13px;line-height:1.7;margin-top:8px">' + fmtEsc(isHeading ? '' : s) + '</div></div>';
     }).join('');
 }
 
@@ -1306,7 +1444,7 @@ async function onSessionSelect(value){
       box.innerHTML = '<div class="empty-state"><div class="empty-icon">💬</div><p>该会话暂无消息</p></div>';
       return;
     }
-    box.innerHTML = msgs.map(m => '<div class="msg-bubble ' + (m.role === 'user' ? 'user' : 'agent') + '"><div class="msg-content">' + esc(m.content || '') + '</div></div>').join('');
+    box.innerHTML = msgs.map(m => '<div class="msg-bubble ' + (m.role === 'user' ? 'user' : 'agent') + '"><div class="msg-content">' + fmtEsc(m.content || '') + '</div></div>').join('');
     box.scrollTop = box.scrollHeight;
   } catch (e) {
     box.innerHTML = '<div class="error-card"><div class="err-title">会话加载失败</div><div class="err-detail">' + esc(e.message || '未知错误') + '</div></div>';
@@ -1387,20 +1525,19 @@ function renderResourceJobResults(resources){
     const fname = title + _resourceFileExt(type);
     const v = _verificationSummary(r);
     const rag = _ragSummary(r);
-    const topic = r.topic || r.question || _currentLearningTopic();
+    const topic = r.topic || r.knowledge_point || _currentLearningTopic();
     const resourceId = r.resource_id || r.id || '';
-    return '<div class="course-card resource-result-card"><h4>' + esc(title) + '</h4><div class="course-meta"><span>' + esc(resourceLabel(type)) + '</span><span>知识点 ' + esc(topic || '当前主题') + '</span><span>' + esc(r.status === 'completed' ? '已生成' : (r.status || '可预览')) + '</span></div>' +
-      '<p style="font-size:12px;color:var(--gray-500);line-height:1.6;margin-top:6px">' + esc(_resourceUseText(type)) + '</p>' +
+    const rawQuestion = r.question || (r.context && r.context.raw_question) || '';
+    return '<div class="course-card resource-result-card"><h4>' + fmtEsc(title) + '</h4><div class="course-meta"><span>' + esc(resourceLabel(type)) + '</span><span>知识点 ' + fmtEsc(topic || '当前主题') + '</span><span>' + esc(r.status === 'completed' ? '已生成' : (r.status || '可预览')) + '</span></div>' +
+      '<p style="font-size:12px;color:var(--gray-500);line-height:1.6;margin-top:6px">' + fmtEsc(_resourceUseText(type)) + '</p>' +
       '<div class="course-meta"><span>生成状态：' + esc(_resourceGenerationLabel(r)) + '</span><span>' + (rag.enabled ? '课程引用已启用' : '课程引用未启用') + '</span></div>' +
       '<div class="course-meta"><span>引用覆盖率 ' + esc(v.coverageLabel) + '</span><span>支持断言 ' + esc(v.supportedText) + '</span><span>无依据断言 ' + esc(v.unsupportedText) + '</span><span>风险等级 ' + esc(v.risk) + '</span></div>' +
-      (r.question ? '<p style="font-size:12px;color:var(--gray-500);margin-top:6px">问题：' + esc(r.question) + '</p>' : '') +
-      '<details style="margin-top:8px"><summary style="font-size:12px;color:var(--gray-500);cursor:pointer">技术详情</summary><div class="course-meta" style="margin-top:6px"><span>provider ' + esc(r.provider || r.generated_by || '本地演示') + '</span><span>model ' + esc(r.model || '未显示') + '</span><span>fallback ' + esc(String(r.fallback_used !== undefined ? r.fallback_used : '兼容')) + '</span><span>rag ' + esc(String(r.used_rag !== undefined ? r.used_rag : rag.enabled)) + '</span><span>embedding provider ' + esc(rag.embeddingProvider) + '</span><span>检索模式 ' + esc(rag.retrievalMode) + '</span></div></details>' +
+      '<details style="margin-top:8px"><summary style="font-size:12px;color:var(--gray-500);cursor:pointer">技术详情</summary><div class="course-meta" style="margin-top:6px"><span>provider ' + esc(r.provider || r.generated_by || '本地演示') + '</span><span>model ' + esc(r.model || '未显示') + '</span><span>fallback ' + esc(String(r.fallback_used !== undefined ? r.fallback_used : '兼容')) + '</span><span>rag ' + esc(String(r.used_rag !== undefined ? r.used_rag : rag.enabled)) + '</span><span>embedding provider ' + esc(rag.embeddingProvider) + '</span><span>检索模式 ' + esc(rag.retrievalMode) + '</span>' + (rawQuestion ? '<span>本轮原始问题 ' + esc(rawQuestion) + '</span>' : '') + '</div></details>' +
       '<div style="margin-top:8px;display:flex;gap:8px;flex-wrap:wrap">' +
       '<button class="btn btn-sm btn-outline" onclick="loadArtifactPreview(' + jsAttrArg(type) + ', ' + jsAttrArg(topic) + ')">预览</button>' +
       _resourceDownloadBtn(r.resource_id || r.id, r.download_url, fname) +
       '<button class="btn btn-sm btn-outline" onclick="bookmarkResource(' + jsAttrArg(resourceId) + ', ' + jsAttrArg(title) + ')">收藏</button>' +
-      '<button class="btn btn-sm btn-outline" onclick="quickGenerateFromChat(&quot;quiz&quot;, ' + jsAttrArg(topic) + ')">用这份资源生成练习题</button>' +
-      '<button class="btn btn-sm btn-outline" onclick="quickGenerateFromChat(&quot;study_plan&quot;, ' + jsAttrArg(topic) + ')">加入学习路径</button>' +
+      _resourceNextActionButtons(type, topic) +
       '<button class="btn btn-sm btn-outline" onclick="generateResources()">继续生成更多资源</button>' +
       '<button class="btn btn-sm btn-outline" onclick="navTo(\'resource-center\')">去资料库查看</button></div></div>';
   }).join('');
@@ -1580,25 +1717,25 @@ function _resourceFileCards(files){
     const course = f.course_name || f.course_title || '';
     const createdAt = f.created_at || f.updated_at || '';
     const icon = { lecture_doc: '📘', mindmap: '🧠', quiz: '📝', ppt: '📊', reading: '📚', video_script: '🎬', study_plan: '🗺️', file: '📄' }[type] || '📄';
-    const topic = f.topic || f.question || f.knowledge_point || origin;
+    const topic = f.topic || f.knowledge_point || origin;
     const v = _verificationSummary(f);
     const rag = _ragSummary(f);
     const statusLabel = f.status === 'completed' ? '已生成' : (f.status || '可用');
     const ridRaw = f.resource_id || f.id || '';
     const rid = esc(ridRaw);
-    const oname = esc(origin);
-    const techDetails = '<details style="margin-top:8px"><summary style="font-size:12px;color:var(--gray-500);cursor:pointer">技术详情</summary><div class="course-meta" style="margin-top:6px"><span>资源ID ' + esc(ridRaw || '本地资源') + '</span><span>大小 ' + Math.round((f.size||0)/1024) + 'KB</span><span>provider ' + esc(f.provider || f.generated_by || '本地演示') + '</span><span>model ' + esc(f.model || '未显示') + '</span><span>fallback ' + esc(String(f.fallback_used !== undefined ? f.fallback_used : '兼容')) + '</span><span>rag ' + esc(String(f.used_rag !== undefined ? f.used_rag : rag.enabled)) + '</span><span>embedding provider ' + esc(rag.embeddingProvider) + '</span><span>检索模式 ' + esc(rag.retrievalMode) + '</span><span>匹配片段 ' + esc(String(rag.matchedChunks)) + '</span></div></details>';
+    const oname = fmtEsc(origin);
+    const rawQuestion = f.question || (f.context && f.context.raw_question) || '';
+    const techDetails = '<details style="margin-top:8px"><summary style="font-size:12px;color:var(--gray-500);cursor:pointer">技术详情</summary><div class="course-meta" style="margin-top:6px"><span>资源ID ' + esc(ridRaw || '本地资源') + '</span><span>大小 ' + Math.round((f.size||0)/1024) + 'KB</span><span>provider ' + esc(f.provider || f.generated_by || '本地演示') + '</span><span>model ' + esc(f.model || '未显示') + '</span><span>fallback ' + esc(String(f.fallback_used !== undefined ? f.fallback_used : '兼容')) + '</span><span>rag ' + esc(String(f.used_rag !== undefined ? f.used_rag : rag.enabled)) + '</span><span>embedding provider ' + esc(rag.embeddingProvider) + '</span><span>检索模式 ' + esc(rag.retrievalMode) + '</span><span>匹配片段 ' + esc(String(rag.matchedChunks)) + '</span>' + (rawQuestion ? '<span>本轮原始问题 ' + esc(rawQuestion) + '</span>' : '') + '</div></details>';
     return '<div class="course-card resource-center-card"><h4>' + icon + ' ' + oname + '</h4>' +
-      '<div class="course-meta"><span>' + esc(label) + '</span><span>知识点 ' + esc(topic || '当前主题') + '</span><span>' + esc(statusLabel) + '</span>' + (course ? '<span>课程 ' + esc(course) + '</span>' : '') + (createdAt ? '<span>' + esc(String(createdAt).slice(0, 19).replace('T', ' ')) + '</span>' : '') + '</div>' +
-      '<p style="font-size:12px;color:var(--gray-500);line-height:1.6;margin-top:6px">' + esc(_resourceUseText(type)) + '</p>' +
+      '<div class="course-meta"><span>' + esc(label) + '</span><span>知识点 ' + fmtEsc(topic || '当前主题') + '</span><span>' + esc(statusLabel) + '</span>' + (course ? '<span>课程 ' + esc(course) + '</span>' : '') + (createdAt ? '<span>' + esc(String(createdAt).slice(0, 19).replace('T', ' ')) + '</span>' : '') + '</div>' +
+      '<p style="font-size:12px;color:var(--gray-500);line-height:1.6;margin-top:6px">' + fmtEsc(_resourceUseText(type)) + '</p>' +
       '<div class="course-meta"><span>生成状态：' + esc(_resourceGenerationLabel(f)) + '</span><span>' + (rag.enabled ? '课程引用已启用' : '课程引用未启用') + '</span></div>' +
       '<div class="course-meta"><span>引用覆盖率 ' + esc(v.coverageLabel) + '</span><span>支持断言 ' + esc(v.supportedText) + '</span><span>无依据断言 ' + esc(v.unsupportedText) + '</span><span>风险等级 ' + esc(v.risk) + '</span></div>' +
-      (f.question ? '<p style="font-size:12px;color:var(--gray-500);margin-top:6px">问题：' + esc(f.question) + '</p>' : '') +
       techDetails +
       '<div style="margin-top:8px;display:flex;gap:8px;flex-wrap:wrap">' +
       '<button class="btn btn-sm btn-outline" onclick="loadArtifactPreview(' + jsAttrArg(type) + ', ' + jsAttrArg(topic) + ')">预览</button>' +
       _resourceDownloadBtn(f.resource_id || f.id, f.download_url, origin + _resourceFileExt(type)) +
-      '<button class="btn btn-sm btn-outline" onclick="bookmarkResource(' + jsAttrArg(rid) + ', ' + jsAttrArg(oname) + ')">收藏</button><button class="btn btn-sm btn-outline" onclick="quickGenerateFromChat(&quot;quiz&quot;, ' + jsAttrArg(topic) + ')">继续练习</button><button class="btn btn-sm btn-outline" onclick="quickGenerateFromChat(&quot;study_plan&quot;, ' + jsAttrArg(topic) + ')">加入路径</button></div></div>';
+      '<button class="btn btn-sm btn-outline" onclick="bookmarkResource(' + jsAttrArg(rid) + ', ' + jsAttrArg(oname) + ')">收藏</button>' + _resourceNextActionButtons(type, topic) + '</div></div>';
   }).join('');
 }
 
@@ -1902,8 +2039,10 @@ async function loadSettings(){
     const deepseekReady = d.deepseek_configured ? '已配置' : '未配置';
     const llmPanel =
       '<div class="form-group"><label>科大讯飞 APIPassword</label><input id="spark-api-key" class="input" type="password" placeholder="可填 APIPassword，或粘贴 APIKey:APIPassword"></div>' +
-      '<div class="form-group"><label>科大讯飞 API 入口</label><input id="spark-base-url" class="input" value="' + esc(d.spark_base_url_configured ? (d.spark_base_url || sparkDefaults.base_url) : sparkDefaults.base_url) + '" placeholder="例如 https://spark-api-open.xf-yun.com/v1"></div>' +
-      '<div class="form-group"><label>科大讯飞 模型名称</label><input id="spark-model" class="input" value="' + esc(d.spark_model || sparkDefaults.model) + '"></div>' +
+      '<div class="course-card spark-x2-tip"><h4>Spark X2 推荐配置</h4><div class="course-meta"><span>API 入口：https://spark-api-open.xf-yun.com/x2</span><span>模型名称：spark-x</span></div><button class="btn btn-sm btn-outline" style="margin-top:8px" onclick="fillSparkX2Config()">填入 Spark X2 推荐配置</button></div>' +
+      '<div class="form-group"><label>科大讯飞 API 入口</label><input id="spark-base-url" class="input" value="' + esc(d.spark_base_url_configured ? (d.spark_base_url || sparkDefaults.base_url) : sparkDefaults.base_url) + '" placeholder="例如 https://spark-api-open.xf-yun.com/x2" oninput="validateSparkX2Config()"></div>' +
+      '<div class="form-group"><label>科大讯飞 模型名称</label><input id="spark-model" class="input" value="' + esc(d.spark_model || sparkDefaults.model) + '" oninput="validateSparkX2Config()"></div>' +
+      '<p id="spark-config-warning" style="font-size:12px;color:#b45309;margin-top:-8px;margin-bottom:10px"></p>' +
       '<div class="form-group"><label>超时(秒)</label><input id="spark-timeout" class="input" type="number" min="60" max="600" value="180"></div>' +
       '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px"><button class="btn btn-primary" onclick="_saveLlmProvider(\'spark\')">保存科大讯飞配置</button><button class="btn btn-outline" onclick="_testLlmProvider(\'spark\')">测试科大讯飞连接</button></div>' +
       '<p id="spark-test-result" style="font-size:11px;color:var(--gray-400);margin-top:-6px;margin-bottom:16px">星火 OpenAI 兼容接口通常需要 APIPassword，不是普通 AppID；如使用老版 APIKey/APISecret，请确认 base_url、model 和权限已适配。密钥不会回显。</p>' +
@@ -1940,8 +2079,32 @@ async function loadSettings(){
 
 function _providerDefaults(provider){
   return provider === 'spark'
-    ? { base_url: 'https://spark-api-open.xf-yun.com/v1', model: 'generalv3.5' }
+    ? { base_url: 'https://spark-api-open.xf-yun.com/x2', model: 'spark-x' }
     : { base_url: 'https://api.deepseek.com', model: 'deepseek-v4-pro' };
+}
+
+function fillSparkX2Config(){
+  const base = document.getElementById('spark-base-url');
+  const model = document.getElementById('spark-model');
+  if (base) base.value = 'https://spark-api-open.xf-yun.com/x2';
+  if (model) model.value = 'spark-x';
+  validateSparkX2Config();
+  toast('已填入 Spark X2 推荐配置，APIPassword 未修改', 'success');
+}
+
+function validateSparkX2Config(){
+  const base = ((document.getElementById('spark-base-url') || {}).value || '').trim();
+  const model = ((document.getElementById('spark-model') || {}).value || '').trim();
+  const warn = document.getElementById('spark-config-warning');
+  if (!warn) return true;
+  let message = '';
+  if (/\/chat\/completions\/?$/i.test(base)) {
+    message = '当前项目使用 OpenAI SDK，请填写父路径 https://spark-api-open.xf-yun.com/x2，系统会自动请求 /chat/completions。';
+  } else if (/\/x2\/?$/i.test(base) && /^(x2|spark\s*x2|generalv3\.5)$/i.test(model)) {
+    message = 'Spark X2 的模型名称请填 spark-x，不要填写菜单名 x2 / Spark X2 / generalv3.5。';
+  }
+  warn.textContent = message;
+  return !message;
 }
 
 async function _saveLlmProvider(provider){
@@ -1951,6 +2114,7 @@ async function _saveLlmProvider(provider){
   const timeoutEl = document.getElementById(provider + '-timeout');
   const timeoutSeconds = Math.max(60, Math.min(600, Number((timeoutEl && timeoutEl.value) || 180) || 180));
   if (!apiKey.trim()) return toast('请填写 ' + (provider === 'spark' ? 'APIPassword' : 'API Key'), 'info');
+  if (provider === 'spark') validateSparkX2Config();
   try {
     const r = await api('/api/settings/llm', {
       method: 'POST',
@@ -1958,6 +2122,7 @@ async function _saveLlmProvider(provider){
     });
     if (r.ok && r.data && r.data.ok !== false) {
       toast((provider === 'spark' ? '讯飞星火' : 'DeepSeek') + ' 配置已保存', 'success');
+      if (provider === 'spark' && r.data.normalized_base_url) toast('已保存 API 入口：' + r.data.normalized_base_url, 'success');
       loadSettings();
       return;
     }
@@ -1972,6 +2137,7 @@ async function _testLlmProvider(provider){
   const timeoutEl = document.getElementById(provider + '-timeout');
   const timeoutSeconds = Math.max(60, Math.min(600, Number((timeoutEl && timeoutEl.value) || 180) || 180));
   const resultEl = document.getElementById(provider + '-test-result');
+  if (provider === 'spark') validateSparkX2Config();
   if (resultEl) resultEl.textContent = '正在测试连接...';
   try {
     const r = await api('/api/settings/test-llm', {
@@ -1980,7 +2146,7 @@ async function _testLlmProvider(provider){
     });
     const d = (r.ok && r.data) ? r.data : {};
     if (d.ok) {
-      if (resultEl) resultEl.textContent = '连接成功 · ' + _publicModelStatus(d) + ' · ' + Math.round(d.latency_ms || 0) + 'ms';
+      if (resultEl) resultEl.textContent = '连接成功 · ' + _publicModelStatus(d) + ' · ' + Math.round(d.latency_ms || 0) + 'ms' + (d.normalized_base_url ? ' · ' + d.normalized_base_url : '');
       toast((provider === 'spark' ? '讯飞星火' : 'DeepSeek') + ' 连接测试成功', 'success');
       S.llmProvider = d.provider || provider;
       S.llmModel = d.model || model;
@@ -2016,7 +2182,7 @@ function _finishAskResponse(el, msg, d, box){
     const modelNotice = modelLabel.indexOf('失败') >= 0
       ? '<div class="course-card" style="margin-top:8px;border-color:#f59e0b;background:#fff7ed"><div class="course-meta"><span>' + esc(modelLabel) + '</span><span>' + esc((d.model_status && d.model_status.failure_reason) || '请在设置页检查 Spark APIPassword / base_url / model') + '</span></div></div>'
       : '';
-    el.innerHTML = '<div class="msg-content">' + esc(answer || '已收到问题，当前环境暂未返回正式答案。') + '</div>' +
+    el.innerHTML = renderStructuredAnswer(answer || '已收到问题，当前环境暂未返回正式答案。') +
       modelNotice +
       (refs.length ? '<div class="msg-citations">📚 ' + refs.map(x => esc(typeof x === 'string' ? x : (x.source || x.chunk_id || '引用'))).join(' · ') + '</div>' : '') +
       _renderResourceSuggestions(suggestions, msg);
@@ -2119,7 +2285,7 @@ async function sendQuestion(){
   S.lastQuestion = msg;
   S.lastTopic = msg;
   const box = document.getElementById('chat-messages');
-  if (box) box.innerHTML += '<div class="msg-bubble user"><div class="msg-content">' + esc(msg) + '</div></div>';
+  if (box) box.innerHTML += '<div class="msg-bubble user"><div class="msg-content">' + fmtEsc(msg) + '</div></div>';
   if (input) input.value = '';
 
   const typingId = 'typing-' + Date.now();

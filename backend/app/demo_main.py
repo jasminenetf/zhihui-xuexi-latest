@@ -72,14 +72,25 @@ def _normalize_spark_api_password(value: str | None) -> str:
     return raw
 
 
+def _normalize_openai_base_url(url: str | None) -> str:
+    raw = str(url or "").strip().strip('"').strip("'")
+    if not raw:
+        return ""
+    raw = raw.rstrip("/")
+    suffix = "/chat/completions"
+    if raw.lower().endswith(suffix):
+        raw = raw[: -len(suffix)].rstrip("/")
+    return raw
+
+
 STATE: dict[str, Any] = {
     "llm_provider": os.getenv("LLM_PROVIDER", "mock"),
     "deepseek_api_key": os.getenv("DEEPSEEK_API_KEY", ""),
     "deepseek_base_url": os.getenv("DEEPSEEK_BASE_URL", "https://api.deepseek.com"),
     "deepseek_model": os.getenv("DEEPSEEK_MODEL", "deepseek-v4-pro"),
     "spark_api_key": _normalize_spark_api_password(os.getenv("SPARK_API_PASSWORD", os.getenv("SPARK_API_KEY", ""))),
-    "spark_base_url": os.getenv("SPARK_BASE_URL", "https://spark-api-open.xf-yun.com/v1"),
-    "spark_model": os.getenv("SPARK_MODEL", "generalv3.5"),
+    "spark_base_url": _normalize_openai_base_url(os.getenv("SPARK_BASE_URL", "https://spark-api-open.xf-yun.com/x2")),
+    "spark_model": os.getenv("SPARK_MODEL", "spark-x"),
     "llm_timeout_seconds": _coerce_llm_timeout(os.getenv("LLM_TIMEOUT_SECONDS", os.getenv("SPARK_TIMEOUT_SECONDS", DEFAULT_LLM_TIMEOUT_SECONDS))),
     "course_id": 1,
     "course_name": "高等数学上册",
@@ -309,22 +320,43 @@ def _extract_learning_intent(question: str, knowledge_point: str = "") -> dict[s
     else:
         resource_intent = "review"
         difficulty_level = "foundation"
+    if needs_definition:
+        request_type = "定义型"
+    elif any(k in hay for k in ["直觉", "人话", "理解"]):
+        request_type = "直觉理解型"
+    elif any(k in hay for k in ["符号", "公式", "dx", "Δ", "delta"]):
+        request_type = "符号翻译型"
+    elif needs_mistake:
+        request_type = "易错辨析型"
+    elif needs_example:
+        request_type = "例题应用型"
+    elif any(k in hay for k in ["复习", "路径", "计划"]):
+        request_type = "复习路径型"
+    else:
+        request_type = "直觉理解型"
 
     if topic_key == "极限":
         student_problem = "不理解函数极限的定义、趋近过程和常见误区"
         display_title = "函数极限：从定义到常见误区"
+        likely_confusions = ["极限值 vs 函数值", "左右极限", "0/0 型", "趋近过程"]
     elif topic_key == "积分":
-        student_problem = "需要区分积分概念、几何意义和公式适用条件"
-        display_title = f"{topic_label}：概念、几何意义与例题"
+        student_problem = "需要弄懂定积分为什么用分割、求和、取极限来定义"
+        display_title = f"{topic_label}：定义、符号理解与直觉"
+        if request_type == "定义型":
+            requested_focuses = _merge_unique(["定义", "符号理解", "直觉理解"], requested_focuses, 5)
+        likely_confusions = ["求和极限", "dx", "定积分 vs 不定积分", "面积 vs 累积量"]
     elif topic_key == "导数":
         student_problem = "需要理解导数定义、变化率和例题步骤"
         display_title = "导数定义：从变化率到例题"
+        likely_confusions = ["平均变化率 vs 瞬时变化率", "Δx", "可导 vs 连续", "切线斜率"]
     elif topic_key == "连续":
         student_problem = "需要理解连续三条件和常见间断误区"
         display_title = "函数连续：三条件与易错点"
+        likely_confusions = ["函数值存在", "极限存在", "极限值等于函数值", "连续 vs 可导"]
     else:
         student_problem = f"需要围绕{topic_label}补清概念、条件和例题"
         display_title = f"{topic_label}：核心概念与例题"
+        likely_confusions = ["概念含义", "适用条件", "例题步骤"]
     title_stub = f"{topic_label}：{'、'.join(requested_focuses[:3])}"
     if requested_focuses[:3] == ["定义", "常见误区", "例题"]:
         title_stub = f"{topic_label}：定义、常见误区与例题"
@@ -337,6 +369,9 @@ def _extract_learning_intent(question: str, knowledge_point: str = "") -> dict[s
         "chapter": chapter,
         "student_problem": student_problem,
         "requested_focuses": requested_focuses,
+        "request_type": request_type,
+        "student_goal": f"弄懂{topic_label}为什么这样定义，并能用一道基础题验证理解",
+        "likely_confusions": likely_confusions,
         "resource_intent": resource_intent,
         "difficulty_level": difficulty_level,
         "needs_example": needs_example,
@@ -413,11 +448,11 @@ def _analyze_math_topic(topic: str, profile: dict | None = None, wrong_book: lis
             "contrast_pairs": ["平均变化率 vs 瞬时变化率", "割线 vs 切线", "连续 vs 可导"],
         },
         "积分": {
-            "topic_label": "定积分的几何意义",
+            "topic_label": "定积分",
             "course_chapter": "第四、五章 不定积分与定积分",
             "core_question": "怎样把一个区间内不断变化的小量累加成总量？",
             "concept_intuition": "定积分把区间切成很多小段，用小矩形面积近似，再让小段无限变细。",
-            "formal_definition": "定积分是分割、取样、求和、取极限的结果，可表示曲边梯形的有向面积。",
+            "formal_definition": "定积分是分割区间、取样、求和、取极限的结果，可写成 ∫[a,b] f(x) dx，表示从 a 到 b 的累积量。",
             "symbol_focus": "积分号、上下限、被积函数、dx、小区间求和",
             "prerequisites": ["函数图像", "区间与面积", "求和思想", "极限思想"],
             "condition_checks": ["先区分定积分和不定积分", "看清上下限", "判断被积函数在区间上的意义", "结果是否需要常数 C"],
@@ -803,21 +838,35 @@ def _build_demo_study_plan(topic: str) -> dict[str, Any]:
     }
 
 
-def _mock_answer(question: str) -> str:
+def _student_task_answer(question: str) -> str:
     intent = _extract_learning_intent(question)
     clean_topic = intent.get("clean_topic") or question
-    ctx = _gaoshu_context(clean_topic)
-    focus_text = "、".join(intent.get("requested_focuses") or ["定义", "例题", "练习"])
-    return (
-        f"我会按《高等数学上册》的「{ctx['chapter']}」来讲：{clean_topic or ctx['keyword']}。\n\n"
-        f"核心理解：{ctx['summary']}\n\n"
-        f"本轮重点：{focus_text}。\n\n"
-        "建议按这几步学：\n"
-        + "\n".join(f"{i + 1}. {step}" for i, step in enumerate(ctx["steps"]))
-        + "\n\n容易出错的地方："
-        + "；".join(ctx["pitfalls"])
-        + "。\n\n依据：内置教材《高数上.pdf》章节目录与本地高数学习模板。"
-    )
+    a = _analyze_math_topic(clean_topic)
+    if intent.get("topic_key") == "积分" and intent.get("request_type") == "定义型":
+        one_sentence = "定积分的定义是：把区间 [a,b] 切成很多小段，每段用一个小矩形近似累积量，把这些小矩形加起来，再让小段无限变细后得到的极限。"
+        definition_parts = ["分割区间：把 [a,b] 切成 n 个很小的小区间", "取样点：每段里选一个点 ξᵢ 来代表这一小段", "小矩形面积：用 f(ξᵢ) 乘以小宽度 Δxᵢ", "求和：用 Σ 把所有小矩形加起来", "取极限：让最大的小区间宽度趋近 0，得到稳定的累积量"]
+        symbols = ["∫[a,b] f(x) dx：从 a 到 b 的累积量", "Δxᵢ：第 i 个小区间的宽度", "Σ(i=1 到 n)：把第 1 块到第 n 块全部加起来", "lim(n→∞)：让分割越来越细", "ξᵢ：第 i 个小区间里选的代表点"]
+        mistakes = ["把定积分和不定积分混淆：定积分结果通常是一个数，不需要 +C", "以为 dx 是普通乘号：这里 dx 提醒你累积的是 x 方向上的极小宽度", "只背公式不理解“求和再取极限”：公式背下来也容易不知道上下限和分割在干什么"]
+        example = "小例题：∫[0,1] x dx 表示什么？它表示 y=x 在 0 到 1 这段区间下方的累积面积，也可以看成无数个小矩形面积加起来，结果是 1/2。"
+    else:
+        one_sentence = f"{a['topic_label']}先要回答的问题是：{a['core_question']}。用人话说，{a['concept_intuition']}"
+        definition_parts = [a["formal_definition"], *a["condition_checks"][:4]]
+        symbols = [a["symbol_focus"], *a["contrast_pairs"][:3]]
+        mistakes = a["common_mistakes"][:3]
+        example = f"小例题：{a['example_problem']} " + "；".join(a["example_solution_steps"][:3])
+    return "\n\n".join([
+        f"一句话直答：{one_sentence}",
+        "定义拆解：\n" + "\n".join(f"{i + 1}. {x}" for i, x in enumerate(definition_parts)),
+        "符号翻译：\n" + "\n".join(f"- {x}" for x in symbols),
+        "常见误区：\n" + "\n".join(f"- {x}" for x in mistakes),
+        example,
+        "下一步建议：先看讲义拆定义，再看思维导图建立结构，最后做 3 道诊断题检查是否真懂。",
+        f"依据：内置教材《高数上.pdf》课程上下文，定位到 {a['course_chapter']}。",
+    ])
+
+
+def _mock_answer(question: str) -> str:
+    return _student_task_answer(question)
 
 
 def _call_llm(provider: str, question: str, model_override: str = "", max_tokens: int = 600, timeout_seconds: int | None = None, bypass_failure_cache: bool = False) -> tuple[str, str, str]:
@@ -835,7 +884,13 @@ def _call_llm(provider: str, question: str, model_override: str = "", max_tokens
             messages=[
                 {
                     "role": "system",
-                    "content": "你是《高等数学上册》课程学习辅助教师。请用中文回答，步骤清晰，说明适用条件、常见误区，并给出复习建议。",
+                    "content": (
+                        "你是《高等数学上册》课程学习辅助教师。请先直答学生这次问的核心问题，"
+                        "再按“定义拆解、符号翻译、常见误区、小例题、下一步建议”组织。"
+                        "优先使用学生可读的数学表达，不要大量输出原始 LaTeX。"
+                        "必要公式用 Unicode 和中文解释，例如“∫[a,b] f(x) dx 表示从 a 到 b 的累积量”，"
+                        "不要只输出长 LaTeX；每个公式后必须配一句人话解释。"
+                    ),
                 },
                 {"role": "user", "content": question},
             ],
@@ -944,22 +999,99 @@ def _mindmap_tree(topic: str) -> dict[str, Any]:
     }
 
 
-def _structured_lecture(topic: str) -> str:
+def _structured_lecture_data(topic: str) -> dict[str, Any]:
     a = _analyze_math_topic(topic)
-    mistakes = a["common_mistakes"][:3]
-    return "\n\n".join([
-        f"# {a['topic_label']} · 老师讲课式学习讲义",
-        f"## 1. 教材定位\n本讲义对应《高等数学上册》：{a['course_chapter']}。\n\n本节要解决的核心问题是：{a['core_question']}",
-        f"## 2. 为什么这个概念难\n难点不在记住名字，而在分清：{'; '.join(a['contrast_pairs'])}。{a['profile_hint']} {a['wrong_book_hint']}",
-        f"## 3. 人话解释\n{a['concept_intuition']}\n\n先不要套公式，先问自己：题目到底让我观察的是局部变化、趋近过程、连续性，还是区间累积？",
-        f"## 4. 正式定义拆解\n{a['formal_definition']}\n\n符号重点：{a['symbol_focus']}。\n把定义拆开看：研究对象是什么、条件是什么、最后要证明或计算什么。",
-        "## 5. 条件检查清单\n" + "\n".join(f"- {x}" for x in a["condition_checks"]),
-        f"## 6. 典型例题完整拆解\n**题目**：{a['example_problem']}\n\n" + "\n".join(f"{i+1}. {step}" for i, step in enumerate(a["example_solution_steps"])),
-        "## 7. 三个常见错误\n" + "\n".join(f"- 错误 {i+1}：{m}" for i, m in enumerate(mistakes)),
-        "## 8. 纠错方法\n" + "\n".join(f"- 针对「{m}」：先回到定义里的条件，再说明这一步为什么能做。" for m in mistakes),
-        "## 9. 课后 15 分钟复习安排\n1. 3 分钟：不用公式，用自己的话复述核心问题。\n2. 5 分钟：重做本讲义例题，每一步写依据。\n3. 5 分钟：完成 3 道诊断题，错题标注为概念、条件或方法错误。\n4. 2 分钟：根据错因选择下一份资源：导图、讲义或练习。",
-        "## 10. 自测清单\n- 我能说清这个概念研究什么吗？\n- 我能列出做题前必须检查的条件吗？\n- 我能解释例题每一步为什么成立吗？\n- 我能指出最容易混淆的一组概念吗？\n- 我能把错题归因到概念、条件、方法或计算吗？",
-    ])
+    if a["topic_key"] == "积分":
+        symbol_items = [
+            {"symbol": "∫[a,b] f(x) dx", "meaning": "从 a 到 b 的累积量", "student_tip": "先看上下限，再看被积函数表示什么量。"},
+            {"symbol": "Σ(i=1 到 n)", "meaning": "把每一小段的近似量加起来", "student_tip": "Σ 是“很多小块相加”，不是新公式。"},
+            {"symbol": "Δxᵢ", "meaning": "第 i 个小区间的宽度", "student_tip": "它越小，小矩形近似越精细。"},
+            {"symbol": "ξᵢ", "meaning": "第 i 个小区间里选的代表点", "student_tip": "用这个点的函数值代表这一小段的高度。"},
+            {"symbol": "lim(n→∞)", "meaning": "让分割越来越细后看最终稳定值", "student_tip": "核心动作是“求和后取极限”。"},
+        ]
+        one_sentence = "定积分就是把区间切成无限细的小段，把每段的小矩形面积加起来后得到的极限。"
+        distinctions = ["定积分 vs 不定积分：定积分求区间累积量，不定积分求原函数族", "dx vs Δx：dx 表示极限后的微小宽度，Δx 是分割时的小区间宽度", "面积 vs 累积量：面积是最直观例子，累积量还可以是路程、总变化量"]
+    elif a["topic_key"] == "极限":
+        symbol_items = [
+            {"symbol": "lim", "meaning": "看自变量趋近过程中的最终趋势", "student_tip": "它不是直接看某一点的函数值。"},
+            {"symbol": "x→x0", "meaning": "x 靠近 x0，可以从左侧靠近，也可以从右侧靠近", "student_tip": "左右两边趋势都要检查。"},
+            {"symbol": "A", "meaning": "函数值最终靠近的目标数", "student_tip": "A 是趋势目标，不一定等于 f(x0)。"},
+            {"symbol": "左极限 / 右极限", "meaning": "分别看从左侧和右侧靠近时的趋势", "student_tip": "二者相等时，双侧极限才存在。"},
+            {"symbol": "去心邻域", "meaning": "研究 x0 附近但不包括 x0 本身", "student_tip": "所以 x0 处是否有定义不一定影响极限。"},
+            {"symbol": "0/0 型", "meaning": "不是答案，而是未定式提示", "student_tip": "看到 0/0 要化简、等价变形或换方法。"},
+        ]
+        one_sentence = "函数极限研究的是 x 靠近某点时，f(x) 是否稳定靠近一个确定数。"
+        distinctions = ["函数值 vs 极限值：函数值看点上是否定义，极限值看靠近过程", "左极限 vs 右极限：两侧趋势都一致才有双侧极限", "0/0 型 vs 极限值：0/0 只是提示不能直接代入"]
+    elif a["topic_key"] == "导数":
+        symbol_items = [
+            {"symbol": "Δx", "meaning": "自变量的一小段变化", "student_tip": "它是横向变化量。"},
+            {"symbol": "Δy", "meaning": "函数值对应的一小段变化", "student_tip": "它是纵向变化量。"},
+            {"symbol": "Δy/Δx", "meaning": "平均变化率", "student_tip": "先看一段区间内平均变得多快。"},
+            {"symbol": "h→0", "meaning": "让时间或距离间隔无限缩小", "student_tip": "从平均变化过渡到瞬时变化。"},
+            {"symbol": "f'(x)", "meaning": "x 点处的瞬时变化率或切线斜率", "student_tip": "它不是普通分数，而是极限后的结果。"},
+        ]
+        one_sentence = "导数描述函数在某一点附近瞬间变化得有多快，也就是切线斜率。"
+        distinctions = ["平均变化率 vs 瞬时变化率：前者看一段，后者看一点", "割线 vs 切线：割线逐渐靠近时形成切线", "连续 vs 可导：可导一定连续，连续不一定可导"]
+    else:
+        symbol_items = [
+            {"symbol": "研究对象", "meaning": "题目中真正要观察的函数、区间或变化量", "student_tip": "先圈对象，再选方法。"},
+            {"symbol": "适用条件", "meaning": "定理、公式或定义成立前必须满足的限制", "student_tip": "漏条件是高数错题的常见来源。"},
+            {"symbol": "结论目标", "meaning": "题目最终要你证明、计算或解释的内容", "student_tip": "结论要回到题目问法。"},
+        ]
+        one_sentence = f"{a['topic_label']}要解决的是：{a['core_question']}"
+        distinctions = a["contrast_pairs"][:3]
+    mistakes = [
+        {"mistake": m, "why_wrong": "它跳过了定义中的对象或条件。", "how_to_fix": "先回到定义，写清研究对象、适用条件和结论。"}
+        for m in a["common_mistakes"][:3]
+    ]
+    checks = [
+        {"type": "概念复述", "question": f"不用公式，你能说清{a['topic_label']}研究什么吗？", "answer": one_sentence, "explanation": "能用人话复述，才说明不是只背符号。"},
+        {"type": "符号翻译", "question": "公式里最先应该看哪个符号？", "answer": "先看对象和范围，再看运算符号。", "explanation": "符号翻译决定后面用什么方法。"},
+        {"type": "例题迁移", "question": "做例题时每一步要写什么？", "answer": "写出依据。", "explanation": "只抄答案不能发现概念漏洞。"},
+    ]
+    return {
+        "title": f"{a['topic_label']} · 结构化学习讲义",
+        "learning_problem": a["core_question"],
+        "one_sentence_answer": one_sentence,
+        "intuition_explainer": a["concept_intuition"],
+        "formal_definition": a["formal_definition"],
+        "symbol_translation_items": symbol_items,
+        "key_distinctions": distinctions,
+        "worked_example": {
+            "question": a["example_problem"],
+            "idea": "先判断题目问的是概念、条件还是计算，再逐步写依据。",
+            "steps": a["example_solution_steps"][:5],
+            "answer": a["example_solution_steps"][-1] if a["example_solution_steps"] else "见步骤结论",
+            "explanation": "例题重点不是记答案，而是学会从定义到步骤的连接。",
+        },
+        "common_mistakes": mistakes,
+        "quick_self_check": checks,
+        "next_step": "先看思维导图建立结构，再做 3 道同主题练习；错题回到本讲义的误区区块复盘。",
+    }
+
+
+def _structured_lecture(topic: str) -> str:
+    data = _structured_lecture_data(topic)
+    lines = [
+        f"# {data['title']}",
+        f"## 这次要解决的问题\n{data['learning_problem']}",
+        f"## 一句话先懂\n{data['one_sentence_answer']}",
+        f"## 人话直觉\n{data['intuition_explainer']}",
+        f"## 正式定义\n{data['formal_definition']}",
+        "## 符号翻译",
+        *[f"- {x['symbol']}：{x['meaning']}。提示：{x['student_tip']}" for x in data["symbol_translation_items"]],
+        "## 关键区别",
+        *[f"- {x}" for x in data["key_distinctions"]],
+        f"## 完整例题\n题目：{data['worked_example']['question']}\n思路：{data['worked_example']['idea']}",
+        *[f"{i + 1}. {x}" for i, x in enumerate(data["worked_example"]["steps"])],
+        f"答案：{data['worked_example']['answer']}\n解释：{data['worked_example']['explanation']}",
+        "## 常见误区",
+        *[f"- {x['mistake']}：{x['why_wrong']} 修正：{x['how_to_fix']}" for x in data["common_mistakes"]],
+        "## 快速自测",
+        *[f"- {x['type']}：{x['question']} 答案：{x['answer']} 解析：{x['explanation']}" for x in data["quick_self_check"]],
+        f"## 下一步学什么\n{data['next_step']}",
+    ]
+    return "\n\n".join(lines)
     ctx = _gaoshu_context(topic)
     title = topic or ctx["keyword"]
     if ctx["keyword"] == "积分":
@@ -1368,76 +1500,210 @@ def _demo_quiz(topic: str) -> list[dict[str, Any]]:
     ]
 
 
-def _structured_video_script(topic: str, intent: dict[str, Any] | None = None) -> str:
+def _video_script_scenes(topic: str, intent: dict[str, Any] | None = None) -> list[dict[str, Any]]:
     intent = intent or _extract_learning_intent(topic)
     a = _analyze_math_topic(intent.get("clean_topic") or topic)
     scenes = [
         {
+            "scene_index": 1,
             "title": f"为什么要学{a['topic_label']}",
+            "duration_seconds": 40,
             "visual": "黑板左侧写出学生卡点，右侧画出本节学习路线。",
             "voiceover": f"今天先不背公式，我们先弄清楚：{a['core_question']}。",
-            "board": f"{a['topic_label']} = 先看对象和条件，再看方法。",
+            "board_text": f"{a['topic_label']} = 先看对象和条件，再看方法。",
             "interaction": "让学生用一句话说出自己卡在哪里。",
-            "tip": "不要直接把题目关键词当答案。",
+            "pitfall_tip": "不要直接把题目关键词当答案。",
         },
         {
+            "scene_index": 2,
             "title": "用人话解释核心定义",
+            "duration_seconds": 55,
             "visual": "用箭头或数轴展示变量变化过程，旁边标出结果趋势。",
             "voiceover": a["concept_intuition"],
-            "board": a["formal_definition"],
+            "board_text": a["formal_definition"],
             "interaction": "暂停 5 秒：请学生把定义改写成人话。",
-            "tip": "先理解过程，再看符号。",
+            "pitfall_tip": "先理解过程，再看符号。",
         },
         {
+            "scene_index": 3,
             "title": "拆开条件检查表",
+            "duration_seconds": 55,
             "visual": "屏幕显示检查清单，每讲一条就打勾。",
             "voiceover": "做题前先过条件，条件不满足，公式就不能硬套。",
-            "board": " / ".join(a["condition_checks"][:3]),
+            "board_text": " / ".join(a["condition_checks"][:3]),
             "interaction": "问学生：这道题第一步应该检查什么？",
-            "tip": a["common_mistakes"][0],
+            "pitfall_tip": a["common_mistakes"][0],
         },
         {
+            "scene_index": 4,
             "title": "老师带做一个例题",
+            "duration_seconds": 75,
             "visual": "黑板逐步写出例题，每一步旁边标注依据。",
             "voiceover": f"我们用例题来验证定义：{a['example_problem']}",
-            "board": "；".join(a["example_solution_steps"][:4]),
+            "board_text": "；".join(a["example_solution_steps"][:4]),
             "interaction": "在关键变形前暂停，让学生说依据。",
-            "tip": "例题不是抄答案，而是学步骤依据。",
+            "pitfall_tip": "例题不是抄答案，而是学步骤依据。",
         },
         {
+            "scene_index": 5,
             "title": "专门纠正常见误区",
+            "duration_seconds": 60,
             "visual": "左侧错误做法，右侧正确判断流程。",
             "voiceover": f"最常见的错法包括：{'；'.join(a['common_mistakes'][:3])}。",
-            "board": "错因分类：概念 / 条件 / 方法 / 计算",
+            "board_text": "错因分类：概念 / 条件 / 方法 / 计算",
             "interaction": "让学生把自己的错题归到一个错因类型。",
-            "tip": a["wrong_book_hint"],
+            "pitfall_tip": a["wrong_book_hint"],
         },
         {
+            "scene_index": 6,
             "title": "课后闭环",
+            "duration_seconds": 45,
             "visual": "展示讲义、导图、练习、错题本、学习路径依次点亮。",
             "voiceover": "学完后不要只看答案，先补概念，再看结构，最后用 3 道题复测。",
-            "board": "讲义 -> 导图 -> 练习 -> 错题复盘 -> 路径更新",
+            "board_text": "讲义 -> 导图 -> 练习 -> 错题复盘 -> 路径更新",
             "interaction": "选择下一步：看导图、做练习，还是复盘错题？",
-            "tip": "下一轮学习要围绕薄弱点，而不是机械刷题。",
+            "pitfall_tip": "下一轮学习要围绕薄弱点，而不是机械刷题。",
         },
     ]
+    return scenes
+
+
+def _structured_video_script(topic: str, intent: dict[str, Any] | None = None) -> str:
+    intent = intent or _extract_learning_intent(topic)
+    a = _analyze_math_topic(intent.get("clean_topic") or topic)
+    scenes = _video_script_scenes(topic, intent)
     blocks = []
-    for idx, scene in enumerate(scenes, 1):
+    header = [
+        f"# {intent.get('title_stub') or a['topic_label']} · 视频脚本",
+        "",
+        f"适合学生对象：正在学习《高等数学上册》且对 {a['topic_label']} 的定义、条件和例题不稳定的学生。",
+        f"本节视频要解决的问题：{intent.get('student_problem') or a['core_question']}",
+        f"课程依据：{a['course_chapter']}，内置教材《高数上.pdf》。",
+        f"下一步建议：看完后完成 3 道同主题练习，再把错题回流到学习路径。",
+        "",
+    ]
+    for scene in scenes:
         blocks.append(
             "\n".join([
-                f"分镜 {idx}：{scene['title']}",
+                f"分镜 {scene['scene_index']}：{scene['title']}（约 {scene['duration_seconds']} 秒）",
                 "画面：" + scene["visual"],
                 "旁白：" + scene["voiceover"],
-                "板书：" + scene["board"],
+                "板书：" + scene["board_text"],
                 "互动：" + scene["interaction"],
-                "误区提醒：" + scene["tip"],
+                "易错提醒：" + scene["pitfall_tip"],
             ])
         )
-    return "\n\n".join(blocks)
+    footer = [
+        "结尾复习任务：",
+        "1. 用自己的话复述核心定义。",
+        "2. 标出一道例题中每一步的依据。",
+        "3. 完成配套练习并把错因归类为概念、条件、方法或计算。",
+    ]
+    return "\n".join(header) + "\n\n".join(blocks) + "\n\n" + "\n".join(footer)
 
 
 def _teaching_ppt_slides(topic: str) -> list[dict[str, Any]]:
     a = _analyze_math_topic(topic)
+    if a["topic_key"] == "积分":
+        symbol_hint = "∫[a,b] f(x) dx = lim(n→∞) Σ(i=1 到 n) f(ξᵢ) Δxᵢ。人话：把很多小矩形面积加起来，再让小矩形无限变细。"
+        definition_parts = ["分割区间", "取样点", "小矩形面积", "求和", "取极限"]
+    else:
+        symbol_hint = a["formal_definition"]
+        definition_parts = a["condition_checks"][:5]
+    return [
+        {
+            "slide_title": "这节你要学会什么",
+            "slide_goal": f"先说清 {a['topic_label']} 的定义和用途",
+            "student_problem": f"你不是缺一句结论，而是不知道 {a['topic_label']} 在解决什么问题。",
+            "key_points": [a["core_question"], "能用人话解释定义", "能用一道例题验证理解"],
+            "visual_hint": "把本节看成：问题 -> 直觉 -> 定义 -> 符号 -> 例题 -> 自测。",
+            "teacher_in_plain_words": "先别背公式，先回答它到底在描述什么。",
+            "self_check": "你能用一句话说出本节研究对象吗？",
+            "next_action": "进入直觉理解页",
+            "key_takeaway": "先知道学什么，再看公式。",
+        },
+        {
+            "slide_title": "为什么要学这个概念",
+            "slide_goal": "把抽象定义和真实问题连起来",
+            "student_problem": "公式看起来突然出现，是因为没有先看到它要解决的实际问题。",
+            "key_points": [a["concept_intuition"], a["course_chapter"], a["profile_hint"]],
+            "visual_hint": "画一个区间或变化过程，让学生看到“对象在变化”。",
+            "teacher_in_plain_words": a["concept_intuition"],
+            "common_mistake": "一上来套公式，忽略题目对象和条件。",
+            "self_check": "这个概念更像在看一个点、一个过程，还是一个区间？",
+            "next_action": "进入图像 / 直觉理解",
+            "key_takeaway": "公式是把直觉写严格。",
+        },
+        {
+            "slide_title": "图像 / 直觉理解",
+            "slide_goal": "先用图像建立感觉",
+            "student_problem": "学生常把定义当成符号堆，没看到背后的图像。",
+            "key_points": [a["concept_intuition"], *a["contrast_pairs"][:2]],
+            "visual_hint": "用箭头、小区间、矩形或趋近路径表示变化过程。",
+            "teacher_in_plain_words": "先看图像中的动作，再把动作翻译成数学语言。",
+            "self_check": "如果不用公式，你能描述图像里发生了什么吗？",
+            "next_action": "进入正式定义拆解",
+            "key_takeaway": "图像先行，符号跟上。",
+        },
+        {
+            "slide_title": "正式定义拆解",
+            "slide_goal": "把定义拆成可以检查的步骤",
+            "student_problem": "会背定义，但不知道每一句对应做题中的哪一步。",
+            "key_points": definition_parts,
+            "visual_hint": "把定义拆成检查清单，每讲一项就打勾。",
+            "teacher_in_plain_words": a["formal_definition"],
+            "common_mistake": a["common_mistakes"][0],
+            "self_check": "定义里最容易漏掉的是哪一个条件或动作？",
+            "next_action": "进入符号翻译",
+            "key_takeaway": "定义就是做题检查表。",
+        },
+        {
+            "slide_title": "符号翻译",
+            "slide_goal": "让公式变成学生能读懂的话",
+            "student_problem": "不是不会算，而是公式每个符号代表什么没看懂。",
+            "key_points": [symbol_hint, a["symbol_focus"], "先翻译，再计算"],
+            "visual_hint": "把每个符号旁边标中文：范围、对象、累积、极限或条件。",
+            "teacher_in_plain_words": symbol_hint,
+            "self_check": "公式里的第一个符号告诉你要做什么？",
+            "next_action": "进入易混点辨析",
+            "key_takeaway": "符号是压缩语言，要先解压。",
+        },
+        {
+            "slide_title": "最容易搞混的地方",
+            "slide_goal": "提前拆掉常见误区",
+            "student_problem": "学生以为自己算错，其实常是概念或条件混了。",
+            "key_points": a["common_mistakes"][:4],
+            "visual_hint": "左边列错误想法，右边列正确判断。",
+            "teacher_in_plain_words": a["wrong_book_hint"],
+            "common_mistake": "；".join(a["common_mistakes"][:2]),
+            "self_check": f"请说明：{a['contrast_pairs'][0]}。",
+            "next_action": "进入典型例题",
+            "key_takeaway": "先辨析，再计算。",
+        },
+        {
+            "slide_title": "一道典型例题",
+            "slide_goal": "把定义落到题目步骤",
+            "student_problem": "听懂概念后，仍然不知道第一步怎么写。",
+            "key_points": [a["example_problem"], *a["example_solution_steps"][:4]],
+            "visual_hint": "每一步旁边标注“用了哪个定义/条件”。",
+            "teacher_in_plain_words": "例题不是抄答案，而是学每一步为什么成立。",
+            "example": {"question": a["example_problem"], "steps": a["example_solution_steps"][:5]},
+            "self_check": "这一步用了定义、条件还是代数变形？",
+            "next_action": "进入自检与下一步",
+            "key_takeaway": "会解释步骤，才算会做。",
+        },
+        {
+            "slide_title": "自检与下一步",
+            "slide_goal": "判断自己是否真的学会",
+            "student_problem": "看懂不等于会做，需要用自测确认。",
+            "key_points": ["能复述定义", "能翻译符号", "能做基础例题", "能说出一个常见误区"],
+            "visual_hint": "四格自检：定义 / 符号 / 例题 / 误区。",
+            "teacher_in_plain_words": "如果有一格答不上来，就回到对应资源。",
+            "self_check": "你现在最不稳的是定义、符号、例题还是误区？",
+            "next_action": "生成 3 道同主题练习，并把错题回流错题本。",
+            "key_takeaway": "学习闭环：讲义 -> 导图 -> 练习 -> 错题 -> 路径更新。",
+        },
+    ]
     weak = ", ".join(_profile_list(STATE.get("profile", {}).get("weak_points"))[:3] or [a["topic_key"]])
     wrong_hint = a["wrong_book_hint"]
     example_steps = a["example_solution_steps"]
@@ -1862,6 +2128,9 @@ def _demo_resource_payload(resource_type: str, topic: str, resource_id: str) -> 
     topic = intent.get("clean_topic") or topic
     label = _resource_label(resource_type)
     title = f"{intent.get('title_stub') or topic or '当前学习主题'} · {label}"
+    active_provider, active_key, _, _ = _provider_config(STATE.get("llm_provider", ""))
+    generation_provider = active_provider if active_provider in {"spark", "deepseek"} and active_key and not STATE.get("llm_last_failed_provider") else "mock_curriculum"
+    generation_fallback = generation_provider == "mock_curriculum"
     base = {
         "ok": True,
         "resource_id": resource_id,
@@ -1876,14 +2145,18 @@ def _demo_resource_payload(resource_type: str, topic: str, resource_id: str) -> 
         "status": "completed",
         "preview_available": True,
         "download_available": True,
-        "generated_by": "mock_curriculum",
-        "fallback_used": True,
+        "generated_by": generation_provider,
+        "provider": generation_provider,
+        "fallback_used": generation_fallback,
     }
     if resource_type == "mindmap":
         return {**base, "tree": _mindmap_tree(topic), "mermaid": _demo_mindmap(topic), "content": _demo_mindmap(topic)}
     if resource_type == "quiz":
         items = _demo_quiz(topic)
         return {**base, "items": items, "content": {"items": items}}
+    if resource_type == "lecture_doc":
+        lecture = _structured_lecture_data(topic or "函数极限的定义")
+        return {**base, "lecture_doc": lecture, "content": _structured_lecture(topic or "函数极限的定义")}
     if resource_type == "ppt":
         slides = _teaching_ppt_slides(topic)
         return {
@@ -1904,10 +2177,20 @@ def _demo_resource_payload(resource_type: str, topic: str, resource_id: str) -> 
             "content": "\n".join(f"{s.get('order', i + 1)}. {s.get('title')} - {s.get('description')}" for i, s in enumerate(plan.get("steps", []))),
         }
     if resource_type == "video_script":
+        scenes = _video_script_scenes(topic, intent)
         return {
             **base,
             "content": _structured_video_script(topic, intent),
-            "scenes": _structured_video_script(topic, intent).split("\n\n"),
+            "scenes": scenes,
+            "video_script": {
+                "title": title,
+                "target_student": f"正在学习《高等数学上册》且对 {topic} 概念不稳的学生",
+                "learning_problem": intent.get("student_problem") or f"理解 {topic} 的定义、误区和例题",
+                "course_basis": intent.get("chapter") or "高等数学上册",
+                "scenes": scenes,
+                "review_task": "看完后完成 3 道同主题练习，并把错题归因写入错题本。",
+                "next_recommendation": "生成配套 PPT 或练习题，再加入学习路径复测。",
+            },
         }
     return {
         **base,
@@ -2050,51 +2333,49 @@ def _resource_download_text(payload: dict[str, Any], item: dict[str, Any]) -> st
         lines = [
             *header,
             "",
-            "> 教学版文字课件：面向“还不会”的学生设计。每页包含学生卡点、讲解目标、老师讲稿、板书步骤和课堂检查问题，可直接复制到 PowerPoint / WPS 或作为讲课稿使用。",
+            "> 学生辅助学习版 PPT：每页都说明本页目标、关键结论、理解提示、自检问题和下一步动作，适合学生自学复盘。",
             "",
             "## 目录",
         ]
         for idx, slide in enumerate(payload.get("slides") or [], 1):
-            lines.append(f"- 第 {idx} 页：{slide.get('title', '课件页')}")
+            lines.append(f"- 第 {idx} 页：{slide.get('slide_title') or slide.get('title') or '课件页'}")
         lines.append("\n---")
         for idx, slide in enumerate(payload.get("slides") or [], 1):
-            lines.append(f"\n## 第 {idx} 页：{slide.get('title', '课件页')}")
+            lines.append(f"\n## 第 {idx} 页：{slide.get('slide_title') or slide.get('title') or '课件页'}")
             lines.append("")
+            if slide.get("slide_goal"):
+                lines.append(f"**本页目标**：{slide.get('slide_goal')}")
+                lines.append("")
             if slide.get("student_problem"):
                 lines.append(f"**学生卡点**：{slide.get('student_problem')}")
                 lines.append("")
-            if slide.get("lead_in"):
-                lines.append(f"**课堂导入**：{slide.get('lead_in')}")
+            if slide.get("visual_hint") or slide.get("visual_metaphor"):
+                lines.append(f"**看图/理解提示**：{slide.get('visual_hint') or slide.get('visual_metaphor')}")
                 lines.append("")
-            if slide.get("visual_metaphor"):
-                lines.append(f"**直观讲法/类比**：{slide.get('visual_metaphor')}")
+            if slide.get("teacher_in_plain_words") or slide.get("plain_explanation"):
+                lines.append(f"**人话解释**：{slide.get('teacher_in_plain_words') or slide.get('plain_explanation')}")
                 lines.append("")
-            lines.append("**本页要教会学生：**")
-            for bullet in slide.get("bullets") or slide.get("points") or []:
+            lines.append("**关键内容：**")
+            for bullet in slide.get("key_points") or slide.get("bullets") or slide.get("points") or []:
                 lines.append(f"- {bullet}")
-            if slide.get("worked_example"):
-                ex = slide.get("worked_example") or {}
+            if slide.get("example") or slide.get("worked_example"):
+                ex = slide.get("example") or slide.get("worked_example") or {}
                 lines.append("")
-                lines.append(f"**课堂例题**：{ex.get('problem', '')}")
-                for step in ex.get("solution") or []:
+                lines.append(f"**例题**：{ex.get('question') or ex.get('problem') or ''}")
+                for step in ex.get("steps") or ex.get("solution") or []:
                     lines.append(f"- {step}")
-            if slide.get("teacher_script") or slide.get("speaker_notes"):
+            if slide.get("common_mistake"):
                 lines.append("")
-                lines.append(f"**老师讲法**：{slide.get('teacher_script') or slide.get('speaker_notes')}")
-            if slide.get("board_work"):
+                lines.append(f"**易错提醒**：{slide.get('common_mistake')}")
+            if slide.get("self_check") or slide.get("check_question"):
                 lines.append("")
-                lines.append("**板书/演示步骤：**")
-                for step in slide.get("board_work") or []:
-                    lines.append(f"- {step}")
-            if slide.get("check_question"):
+                lines.append(f"**小自测**：{slide.get('self_check') or slide.get('check_question')}")
+            if slide.get("key_takeaway") or slide.get("takeaway"):
                 lines.append("")
-                lines.append(f"**课堂检查问题**：{slide.get('check_question')}")
-            if slide.get("mini_activity"):
+                lines.append(f"**本页关键结论**：{slide.get('key_takeaway') or slide.get('takeaway')}")
+            if slide.get("next_action"):
                 lines.append("")
-                lines.append(f"**课堂互动**：{slide.get('mini_activity')}")
-            if slide.get("takeaway"):
-                lines.append("")
-                lines.append(f"**本页收获**：{slide.get('takeaway')}")
+                lines.append(f"**下一步动作**：{slide.get('next_action')}")
             lines.append("\n---")
         return "\n".join(lines)
     if resource_type == "study_plan":
@@ -2116,6 +2397,40 @@ def _resource_download_text(payload: dict[str, Any], item: dict[str, Any]) -> st
             lines.append("")
         if plan.get("next_action"):
             lines.append(f"## 下一步\n{plan.get('next_action')}")
+        return "\n".join(lines)
+    if resource_type == "video_script":
+        video = payload.get("video_script") or {}
+        scenes = video.get("scenes") or payload.get("scenes") or []
+        lines = [
+            *header,
+            "## 视频脚本定位",
+            f"- 适合学生对象：{video.get('target_student') or '正在学习高等数学基础概念的学生'}",
+            f"- 本节视频要解决的问题：{video.get('learning_problem') or (payload.get('learning_intent') or {}).get('student_problem') or '讲清当前知识点'}",
+            f"- 课程依据：{video.get('course_basis') or context.get('chapter') or '高等数学上册'}",
+            "",
+            "## 分镜脚本",
+        ]
+        if scenes and isinstance(scenes[0], dict):
+            for scene in scenes:
+                lines.extend([
+                    "",
+                    f"### 分镜 {scene.get('scene_index', '')}：{scene.get('title', '讲解片段')}（约 {scene.get('duration_seconds', 45)} 秒）",
+                    f"- 画面建议：{scene.get('visual', '')}",
+                    f"- 旁白稿：{scene.get('voiceover', '')}",
+                    f"- 板书建议：{scene.get('board_text', '')}",
+                    f"- 互动提问：{scene.get('interaction', '')}",
+                    f"- 易错提醒：{scene.get('pitfall_tip', '')}",
+                ])
+        else:
+            lines.append(str(payload.get("content") or "视频脚本已生成。"))
+        lines.extend([
+            "",
+            "## 结尾复习任务",
+            video.get("review_task") or "完成 3 道同主题练习，并把错题归因写入错题本。",
+            "",
+            "## 下一步建议",
+            video.get("next_recommendation") or "生成配套 PPT 或练习题，再加入学习路径复测。",
+        ])
         return "\n".join(lines)
     body = str(payload.get("content") or "内容已生成。")
     return "\n".join([*header, body])
@@ -2151,7 +2466,12 @@ def settings_status():
         "spark_enabled": bool(STATE["spark_api_key"]),
         "spark_configured": bool(STATE["spark_api_key"]),
         "spark_model": STATE["spark_model"],
+        "spark_base_url": STATE["spark_base_url"],
         "spark_base_url_configured": bool(STATE["spark_base_url"]),
+        "spark_x2_recommended": {
+            "base_url": "https://spark-api-open.xf-yun.com/x2",
+            "model": "spark-x",
+        },
         "model_status": _public_model_status(status_provider, bool(STATE.get("llm_last_failed_provider"))),
         "last_model_error": _safe_llm_error_message(STATE.get("llm_last_error") or ""),
         "fallback_provider": fallback_provider,
@@ -2195,11 +2515,12 @@ def save_llm_config(body: LLMConfigRequest):
         raise HTTPException(status_code=400, detail="provider must be spark or deepseek")
     if provider == "spark":
         spark_password = _normalize_spark_api_password(body.api_key)
+        normalized_base_url = _normalize_openai_base_url(body.base_url or "https://spark-api-open.xf-yun.com/x2")
         STATE.update({
             "llm_provider": "spark",
             "spark_api_key": spark_password,
-            "spark_base_url": body.base_url or "https://spark-api-open.xf-yun.com/v1",
-            "spark_model": body.model or "generalv3.5",
+            "spark_base_url": normalized_base_url,
+            "spark_model": body.model or "spark-x",
             "llm_timeout_seconds": _coerce_llm_timeout(body.timeout_seconds),
             "llm_failure_until": 0.0,
             "llm_last_error": "",
@@ -2209,7 +2530,7 @@ def save_llm_config(body: LLMConfigRequest):
             "LLM_PROVIDER": "spark",
             "SPARK_ENABLED": "true",
             "SPARK_API_PASSWORD": _normalize_spark_api_password(STATE["spark_api_key"]),
-            "SPARK_BASE_URL": STATE["spark_base_url"],
+            "SPARK_BASE_URL": normalized_base_url,
             "SPARK_MODEL": STATE["spark_model"],
             "SPARK_TIMEOUT_SECONDS": str(STATE["llm_timeout_seconds"]),
             "LLM_TIMEOUT_SECONDS": str(STATE["llm_timeout_seconds"]),
@@ -2233,12 +2554,15 @@ def save_llm_config(body: LLMConfigRequest):
             "DEEPSEEK_TIMEOUT_SECONDS": str(STATE["llm_timeout_seconds"]),
             "LLM_TIMEOUT_SECONDS": str(STATE["llm_timeout_seconds"]),
         })
-    return {"ok": True, "provider": provider, "saved": True, "applied": True}
+    return {"ok": True, "provider": provider, "saved": True, "applied": True, "normalized_base_url": STATE.get(f"{provider}_base_url", "")}
 
 
 @app.post("/api/settings/test-llm")
 def test_llm(body: LLMTestRequest):
     start = time.time()
+    normalized_base_url = ""
+    if (body.provider or STATE.get("llm_provider") or "").lower() == "spark":
+        normalized_base_url = _normalize_openai_base_url(STATE.get("spark_base_url") or "")
     provider, model, answer = _call_llm(body.provider, body.message, body.model, timeout_seconds=body.timeout_seconds, bypass_failure_cache=True)
     requested_provider = (body.provider or STATE.get("llm_provider") or "").lower()
     failed_real_provider = requested_provider in {"spark", "deepseek"} and provider == "mock"
@@ -2251,6 +2575,7 @@ def test_llm(body: LLMTestRequest):
         "latency_ms": round((time.time() - start) * 1000, 1),
         "message": failure_reason or (f"{provider} 连接可用" if provider != "mock" else "未配置 API，演示模式可用"),
         "model_status": _public_model_status(provider, failed_real_provider),
+        "normalized_base_url": normalized_base_url,
         "fallback_available": True,
     }
 
@@ -2309,6 +2634,8 @@ def ask(body: AskRequest):
     intent = _extract_learning_intent(question)
     clean_topic = intent.get("clean_topic") or question
     provider, model, answer = _call_llm("", question)
+    if intent.get("request_type") == "定义型" and not all(marker in str(answer or "") for marker in ["一句话", "定义", "符号", "误区"]):
+        answer = _student_task_answer(question)
     profile = _update_demo_profile(question, "dialogue")
     ctx = _gaoshu_context(clean_topic)
     if provider != "mock":
@@ -2344,6 +2671,7 @@ def ask(body: AskRequest):
         {"type": "lecture_doc", "title": "面向不会学生的讲义", "reason": "补齐直观解释、严格定义和例题步骤"},
         {"type": "study_plan", "title": "动态学习路径", "reason": "根据画像、错题和当前章节安排下一步"},
         {"type": "ppt", "title": "Markdown 教学版 PPT", "reason": "用于复习或答辩演示的文字课件"},
+        {"type": "video_script", "title": "视频讲解脚本", "reason": "把定义、例题和易错点整理成可录制的分镜讲解"},
     ]
     resource_created_at = time.strftime("%Y-%m-%d %H:%M:%S")
     for item in resource_items:
