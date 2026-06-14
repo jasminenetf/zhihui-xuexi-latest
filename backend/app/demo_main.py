@@ -137,6 +137,7 @@ STATE: dict[str, Any] = {
     "profile_changes": [],
     "llm_failure_until": 0.0,
     "llm_last_error": "",
+    "llm_last_failed_provider": "",
 }
 
 GAOSHU_COURSE_DESCRIPTION = (
@@ -250,6 +251,104 @@ def _gaoshu_context(topic: str) -> dict[str, Any]:
     }
 
 
+def _extract_learning_intent(question: str, knowledge_point: str = "") -> dict[str, Any]:
+    raw = str(question or "").strip()
+    kp = str(knowledge_point or "").strip()
+    source = raw or kp
+    hay = f"{kp} {raw}"
+    if any(k in hay for k in ["函数极限", "数列极限", "极限", "0/0", "左右极限"]):
+        clean_topic = "函数极限"
+        topic_key = "极限"
+        topic_label = "函数极限"
+        chapter = "第一章 函数与极限"
+    elif any(k in hay for k in ["定积分", "积分", "微积分基本公式", "面积"]):
+        clean_topic = "定积分"
+        topic_key = "积分"
+        topic_label = "定积分"
+        chapter = "第四、五章 不定积分与定积分"
+    elif any(k in hay for k in ["导数", "微分", "变化率", "切线"]):
+        clean_topic = "导数定义"
+        topic_key = "导数"
+        topic_label = "导数定义"
+        chapter = "第二章 导数与微分"
+    elif any(k in hay for k in ["连续", "间断"]):
+        clean_topic = "函数连续"
+        topic_key = "连续"
+        topic_label = "函数连续"
+        chapter = "第一章 函数与极限"
+    else:
+        ctx = _gaoshu_context(source)
+        clean_topic = ctx.get("keyword") or "高等数学"
+        topic_key = clean_topic
+        topic_label = clean_topic
+        chapter = ctx.get("chapter") or "高等数学上册"
+
+    focus_rules = [
+        ("定义", ["定义", "概念", "是什么", "什么意思", "含义"]),
+        ("常见误区", ["误区", "易错", "错", "混淆", "坑"]),
+        ("例题", ["例题", "举例", "题", "案例"]),
+        ("步骤", ["步骤", "怎么做", "方法", "流程"]),
+        ("练习", ["练习", "测试", "测验", "刷题"]),
+    ]
+    requested_focuses = [label for label, keys in focus_rules if any(k in hay for k in keys)]
+    if not requested_focuses:
+        requested_focuses = ["定义", "例题", "练习"]
+    requested_focuses = _merge_unique(requested_focuses, [], 5)
+
+    lower_need = hay.lower()
+    needs_definition = "定义" in requested_focuses or any(k in hay for k in ["概念", "是什么", "什么意思"])
+    needs_mistake = "常见误区" in requested_focuses or any(k in hay for k in ["误区", "易错", "混淆"])
+    needs_example = "例题" in requested_focuses or any(k in hay for k in ["举例", "案例"])
+    needs_quiz = "练习" in requested_focuses or any(k in lower_need for k in ["quiz", "test"])
+    if any(k in hay for k in ["不会", "不理解", "看不懂", "讲清", "讲一下"]):
+        resource_intent = "concept_explanation"
+        difficulty_level = "foundation"
+    elif needs_quiz:
+        resource_intent = "practice"
+        difficulty_level = "basic"
+    else:
+        resource_intent = "review"
+        difficulty_level = "foundation"
+
+    if topic_key == "极限":
+        student_problem = "不理解函数极限的定义、趋近过程和常见误区"
+        display_title = "函数极限：从定义到常见误区"
+    elif topic_key == "积分":
+        student_problem = "需要区分积分概念、几何意义和公式适用条件"
+        display_title = f"{topic_label}：概念、几何意义与例题"
+    elif topic_key == "导数":
+        student_problem = "需要理解导数定义、变化率和例题步骤"
+        display_title = "导数定义：从变化率到例题"
+    elif topic_key == "连续":
+        student_problem = "需要理解连续三条件和常见间断误区"
+        display_title = "函数连续：三条件与易错点"
+    else:
+        student_problem = f"需要围绕{topic_label}补清概念、条件和例题"
+        display_title = f"{topic_label}：核心概念与例题"
+    title_stub = f"{topic_label}：{'、'.join(requested_focuses[:3])}"
+    if requested_focuses[:3] == ["定义", "常见误区", "例题"]:
+        title_stub = f"{topic_label}：定义、常见误区与例题"
+
+    return {
+        "raw_question": raw,
+        "clean_topic": clean_topic,
+        "topic_key": topic_key,
+        "topic_label": topic_label,
+        "chapter": chapter,
+        "student_problem": student_problem,
+        "requested_focuses": requested_focuses,
+        "resource_intent": resource_intent,
+        "difficulty_level": difficulty_level,
+        "needs_example": needs_example,
+        "needs_mistake_explanation": needs_mistake,
+        "needs_definition": needs_definition,
+        "needs_quiz": needs_quiz,
+        "title_stub": title_stub,
+        "search_query": f"{topic_label} {' '.join(requested_focuses)}",
+        "display_title": display_title,
+    }
+
+
 def _topic_wrong_hint(topic_key: str, wrong_book: list[dict[str, Any]] | None = None) -> str:
     wrong_book = wrong_book if wrong_book is not None else STATE.get("wrong_book", [])
     for item in wrong_book:
@@ -263,7 +362,8 @@ def _topic_wrong_hint(topic_key: str, wrong_book: list[dict[str, Any]] | None = 
 def _analyze_math_topic(topic: str, profile: dict | None = None, wrong_book: list | None = None) -> dict[str, Any]:
     """Topic-aware teaching analysis shared by lecture, PPT, mindmap and quiz."""
     profile = profile or STATE.get("profile", {})
-    text = str(topic or "")
+    intent = _extract_learning_intent(topic)
+    text = str(intent.get("clean_topic") or topic or "")
     low = text.lower()
     if any(k in low or k in text for k in ["微积分的定义", "微积分整体", "微积分"]):
         key = "微积分"
@@ -360,7 +460,8 @@ def _analyze_math_topic(topic: str, profile: dict | None = None, wrong_book: lis
     }
     analysis = dict(cases.get(key, cases["微积分"]))
     analysis["topic_key"] = key
-    analysis["topic_label"] = text or analysis["topic_label"]
+    if key not in cases:
+        analysis["topic_label"] = text or analysis["topic_label"]
     analysis["review_actions"] = ["先看讲义补概念", "再看导图建立关系", "完成 3 道诊断题", "错题回到学习路径复盘"]
     analysis["wrong_book_hint"] = _topic_wrong_hint(key if key != "微积分" else "", wrong_book)
     analysis["profile_hint"] = common_profile_hint
@@ -703,10 +804,14 @@ def _build_demo_study_plan(topic: str) -> dict[str, Any]:
 
 
 def _mock_answer(question: str) -> str:
-    ctx = _gaoshu_context(question)
+    intent = _extract_learning_intent(question)
+    clean_topic = intent.get("clean_topic") or question
+    ctx = _gaoshu_context(clean_topic)
+    focus_text = "、".join(intent.get("requested_focuses") or ["定义", "例题", "练习"])
     return (
-        f"我会按《高等数学上册》的「{ctx['chapter']}」来讲：{question or ctx['keyword']}。\n\n"
+        f"我会按《高等数学上册》的「{ctx['chapter']}」来讲：{clean_topic or ctx['keyword']}。\n\n"
         f"核心理解：{ctx['summary']}\n\n"
+        f"本轮重点：{focus_text}。\n\n"
         "建议按这几步学：\n"
         + "\n".join(f"{i + 1}. {step}" for i, step in enumerate(ctx["steps"]))
         + "\n\n容易出错的地方："
@@ -721,8 +826,7 @@ def _call_llm(provider: str, question: str, model_override: str = "", max_tokens
     if provider == "mock" or not api_key:
         return "mock", model, _mock_answer(question)
     if not bypass_failure_cache and time.time() < float(STATE.get("llm_failure_until") or 0):
-        last_error = str(STATE.get("llm_last_error") or "真实模型暂不可用")
-        return "mock", "mock", _mock_answer(question) + f"\n\n真实模型暂时不可用，已自动切换本地课程模式：{last_error[:120]}"
+        return "mock", "mock", _mock_answer(question)
     try:
         timeout = _coerce_llm_timeout(timeout_seconds or STATE.get("llm_timeout_seconds"))
         client = OpenAI(base_url=base_url, api_key=api_key, timeout=timeout, max_retries=1)
@@ -739,11 +843,13 @@ def _call_llm(provider: str, question: str, model_override: str = "", max_tokens
         )
         STATE["llm_failure_until"] = 0.0
         STATE["llm_last_error"] = ""
+        STATE["llm_last_failed_provider"] = ""
         return provider, model, resp.choices[0].message.content or "已连接模型，但没有返回内容。"
     except Exception as exc:
         STATE["llm_failure_until"] = time.time() + 120
         STATE["llm_last_error"] = str(exc)[:240]
-        return "mock", "mock", _mock_answer(question) + f"\n\n真实模型调用失败：{str(exc)[:160]}"
+        STATE["llm_last_failed_provider"] = provider
+        return "mock", "mock", _mock_answer(question)
 
 
 def _strip_code_fence(text: str) -> str:
@@ -911,10 +1017,11 @@ def _resolve_generation_topic(topic: str, knowledge_point: str = "") -> str:
     generic = {"", "当前学习主题", "当前主题", "学习主题", "高等数学", "高等数学上册"}
     if candidate in generic and STATE["sessions"]:
         candidate = str(STATE["sessions"][-1].get("title") or "").strip()
-    return candidate or "函数极限的定义"
+    return _extract_learning_intent(candidate or "函数极限的定义", knowledge_point).get("clean_topic") or "函数极限"
 
 
-def _resource_context_meta(topic: str, resource_type: str, generated_by: str, fallback_used: bool) -> dict[str, Any]:
+def _resource_context_meta(topic: str, resource_type: str, generated_by: str, fallback_used: bool, intent: dict[str, Any] | None = None) -> dict[str, Any]:
+    intent = intent or _extract_learning_intent(topic)
     ctx = _gaoshu_context(topic)
     profile = STATE.get("profile", {})
     wrong_hits = [
@@ -923,15 +1030,17 @@ def _resource_context_meta(topic: str, resource_type: str, generated_by: str, fa
     ][:3]
     grounding_score = 0.78 if fallback_used else 0.9
     return {
-        "topic": topic,
-        "question": topic,
+        "topic": intent.get("clean_topic") or topic,
+        "question": intent.get("raw_question") or topic,
+        "raw_question": intent.get("raw_question") or "",
+        "learning_intent": intent,
         "course": STATE["course_name"],
-        "chapter": ctx["chapter"],
+        "chapter": intent.get("chapter") or ctx["chapter"],
         "context_chunks": [
             {
                 "chunk_id": "gaoshu_seed_context_001",
                 "source": "高数上.pdf",
-                "chapter": ctx["chapter"],
+                "chapter": intent.get("chapter") or ctx["chapter"],
                 "content": ctx["summary"],
                 "score": 0.92,
                 "context_type": "seeded_demo_context",
@@ -940,7 +1049,7 @@ def _resource_context_meta(topic: str, resource_type: str, generated_by: str, fa
         "evidence": [
             {
                 "source": "高数上.pdf",
-                "chapter": ctx["chapter"],
+                "chapter": intent.get("chapter") or ctx["chapter"],
                 "content": ctx["summary"],
                 "score": 0.92,
             },
@@ -986,18 +1095,33 @@ def _resource_context_meta(topic: str, resource_type: str, generated_by: str, fa
     }
 
 
+def _safe_llm_error_message(error: str) -> str:
+    text = str(error or "").strip()
+    if not text:
+        return ""
+    lower = text.lower()
+    if "appidnoautherror" in lower or "apikey not found" in lower or "signature cannot be verified" in lower or "401" in lower:
+        return "Spark 认证失败，请检查 APIPassword / APIKey / APISecret / 模型权限 / base_url / model"
+    if "timeout" in lower or "timed out" in lower:
+        return "Spark 请求超时，请稍后重试或把超时时间调大"
+    return text[:160]
+
+
 def _public_model_status(provider: str | None = None, fallback_used: bool = False) -> dict[str, Any]:
     current = str(provider or "mock_curriculum").lower()
     if current == "spark" and not fallback_used:
         label = "Spark 真实生成"
     elif current == "spark" and fallback_used:
         label = "Spark 失败后本地兜底"
+    elif current == "mock" and STATE.get("llm_last_failed_provider") == "spark":
+        label = "Spark 调用失败，当前使用本地演示模板"
     else:
         label = "本地演示模板生成"
     return {
         "label": label,
         "engine": current,
         "fallback_used": bool(fallback_used),
+        "failure_reason": _safe_llm_error_message(STATE.get("llm_last_error") or "") if current == "mock" and STATE.get("llm_last_failed_provider") else "",
     }
 
 
@@ -1244,6 +1368,74 @@ def _demo_quiz(topic: str) -> list[dict[str, Any]]:
     ]
 
 
+def _structured_video_script(topic: str, intent: dict[str, Any] | None = None) -> str:
+    intent = intent or _extract_learning_intent(topic)
+    a = _analyze_math_topic(intent.get("clean_topic") or topic)
+    scenes = [
+        {
+            "title": f"为什么要学{a['topic_label']}",
+            "visual": "黑板左侧写出学生卡点，右侧画出本节学习路线。",
+            "voiceover": f"今天先不背公式，我们先弄清楚：{a['core_question']}。",
+            "board": f"{a['topic_label']} = 先看对象和条件，再看方法。",
+            "interaction": "让学生用一句话说出自己卡在哪里。",
+            "tip": "不要直接把题目关键词当答案。",
+        },
+        {
+            "title": "用人话解释核心定义",
+            "visual": "用箭头或数轴展示变量变化过程，旁边标出结果趋势。",
+            "voiceover": a["concept_intuition"],
+            "board": a["formal_definition"],
+            "interaction": "暂停 5 秒：请学生把定义改写成人话。",
+            "tip": "先理解过程，再看符号。",
+        },
+        {
+            "title": "拆开条件检查表",
+            "visual": "屏幕显示检查清单，每讲一条就打勾。",
+            "voiceover": "做题前先过条件，条件不满足，公式就不能硬套。",
+            "board": " / ".join(a["condition_checks"][:3]),
+            "interaction": "问学生：这道题第一步应该检查什么？",
+            "tip": a["common_mistakes"][0],
+        },
+        {
+            "title": "老师带做一个例题",
+            "visual": "黑板逐步写出例题，每一步旁边标注依据。",
+            "voiceover": f"我们用例题来验证定义：{a['example_problem']}",
+            "board": "；".join(a["example_solution_steps"][:4]),
+            "interaction": "在关键变形前暂停，让学生说依据。",
+            "tip": "例题不是抄答案，而是学步骤依据。",
+        },
+        {
+            "title": "专门纠正常见误区",
+            "visual": "左侧错误做法，右侧正确判断流程。",
+            "voiceover": f"最常见的错法包括：{'；'.join(a['common_mistakes'][:3])}。",
+            "board": "错因分类：概念 / 条件 / 方法 / 计算",
+            "interaction": "让学生把自己的错题归到一个错因类型。",
+            "tip": a["wrong_book_hint"],
+        },
+        {
+            "title": "课后闭环",
+            "visual": "展示讲义、导图、练习、错题本、学习路径依次点亮。",
+            "voiceover": "学完后不要只看答案，先补概念，再看结构，最后用 3 道题复测。",
+            "board": "讲义 -> 导图 -> 练习 -> 错题复盘 -> 路径更新",
+            "interaction": "选择下一步：看导图、做练习，还是复盘错题？",
+            "tip": "下一轮学习要围绕薄弱点，而不是机械刷题。",
+        },
+    ]
+    blocks = []
+    for idx, scene in enumerate(scenes, 1):
+        blocks.append(
+            "\n".join([
+                f"分镜 {idx}：{scene['title']}",
+                "画面：" + scene["visual"],
+                "旁白：" + scene["voiceover"],
+                "板书：" + scene["board"],
+                "互动：" + scene["interaction"],
+                "误区提醒：" + scene["tip"],
+            ])
+        )
+    return "\n\n".join(blocks)
+
+
 def _teaching_ppt_slides(topic: str) -> list[dict[str, Any]]:
     a = _analyze_math_topic(topic)
     weak = ", ".join(_profile_list(STATE.get("profile", {}).get("weak_points"))[:3] or [a["topic_key"]])
@@ -1251,7 +1443,7 @@ def _teaching_ppt_slides(topic: str) -> list[dict[str, Any]]:
     example_steps = a["example_solution_steps"]
     slides = [
         {
-            "title": f"{a['topic_label']}：从不会到会做",
+            "title": f"{a['topic_label']}：从定义到常见误区" if a["topic_key"] == "极限" else f"{a['topic_label']}：从概念到例题",
             "student_problem": f"学生卡点：不知道 {a['topic_label']} 到底解决什么问题。",
             "learning_goal": f"本节课目标：能解释 {a['core_question']} 并完成一道基础题。",
             "course_basis": a["course_chapter"],
@@ -1666,8 +1858,10 @@ def _teaching_ppt_slides(topic: str) -> list[dict[str, Any]]:
 
 
 def _demo_resource_payload(resource_type: str, topic: str, resource_id: str) -> dict[str, Any]:
+    intent = _extract_learning_intent(topic)
+    topic = intent.get("clean_topic") or topic
     label = _resource_label(resource_type)
-    title = f"{topic or '当前学习主题'} · {label}"
+    title = f"{intent.get('title_stub') or topic or '当前学习主题'} · {label}"
     base = {
         "ok": True,
         "resource_id": resource_id,
@@ -1677,6 +1871,8 @@ def _demo_resource_payload(resource_type: str, topic: str, resource_id: str) -> 
         "label": label,
         "title": title,
         "topic": topic,
+        "display_title": intent.get("display_title") or topic,
+        "learning_intent": intent,
         "status": "completed",
         "preview_available": True,
         "download_available": True,
@@ -1699,11 +1895,19 @@ def _demo_resource_payload(resource_type: str, topic: str, resource_id: str) -> 
         }
     if resource_type == "study_plan":
         plan = _build_demo_study_plan(topic or "函数极限")
+        plan["title"] = f"{intent.get('title_stub') or topic} · 个性化学习路径"
+        plan["profile_summary"] = f"基于最近问题「{intent.get('raw_question') or topic}」、教材章节 {intent.get('chapter')} 和薄弱点生成。"
         return {
             **base,
             "study_plan": plan,
             "plan": plan.get("steps", []),
             "content": "\n".join(f"{s.get('order', i + 1)}. {s.get('title')} - {s.get('description')}" for i, s in enumerate(plan.get("steps", []))),
+        }
+    if resource_type == "video_script":
+        return {
+            **base,
+            "content": _structured_video_script(topic, intent),
+            "scenes": _structured_video_script(topic, intent).split("\n\n"),
         }
     return {
         **base,
@@ -1712,24 +1916,32 @@ def _demo_resource_payload(resource_type: str, topic: str, resource_id: str) -> 
 
 
 def _generate_resource_payload(resource_type: str, topic: str, resource_id: str) -> dict[str, Any]:
-    topic = _resolve_generation_topic(topic)
+    raw_question = str(topic or "").strip()
+    if raw_question in {"", "当前学习主题", "当前主题", "学习主题"} and STATE["sessions"]:
+        raw_question = str(STATE["sessions"][-1].get("title") or raw_question).strip()
+    intent = _extract_learning_intent(raw_question)
+    topic = intent.get("clean_topic") or _resolve_generation_topic(topic)
     payload = _demo_resource_payload(resource_type, topic, resource_id)
+    payload["learning_intent"] = intent
+    payload["display_title"] = intent.get("display_title") or topic
+    payload["title"] = f"{intent.get('title_stub') or topic} · {payload['label']}"
     llm_payload: dict[str, Any] | None = None
     use_artifact_llm = os.getenv("RESOURCE_LLM_ENABLED", "0").lower() in {"1", "true", "yes", "on"}
     if resource_type == "quiz":
         llm_payload = _llm_generate_quiz(topic)
     elif use_artifact_llm and resource_type == "mindmap":
         llm_payload = _llm_generate_mindmap(topic)
-    elif use_artifact_llm and resource_type in {"lecture_doc", "reading", "video_script"}:
+    elif use_artifact_llm and resource_type in {"lecture_doc", "reading"}:
         llm_payload = _llm_generate_lecture(topic)
     if llm_payload:
         payload.update(llm_payload)
-        payload["title"] = f"{topic} · {payload['label']}"
+        payload["title"] = f"{intent.get('title_stub') or topic} · {payload['label']}"
     payload["context"] = _resource_context_meta(
         topic,
         resource_type,
         str(payload.get("generated_by") or "mock_curriculum"),
         bool(payload.get("fallback_used", True)),
+        intent,
     )
     payload["evidence"] = payload["context"]["evidence"]
     payload["verifier"] = payload["context"]["verifier"]
@@ -1929,6 +2141,7 @@ def settings_status():
     provider, _, _, model = _provider_config(STATE["llm_provider"])
     vector_count = 128 + max(0, len(STATE["files"]) - 1) * 12
     fallback_provider = "deepseek" if STATE["deepseek_api_key"] else ("spark" if STATE["spark_api_key"] else "mock")
+    status_provider = "mock" if STATE.get("llm_last_failed_provider") else provider
     return {
         "llm_provider": provider,
         "llm_model": model,
@@ -1939,6 +2152,8 @@ def settings_status():
         "spark_configured": bool(STATE["spark_api_key"]),
         "spark_model": STATE["spark_model"],
         "spark_base_url_configured": bool(STATE["spark_base_url"]),
+        "model_status": _public_model_status(status_provider, bool(STATE.get("llm_last_failed_provider"))),
+        "last_model_error": _safe_llm_error_message(STATE.get("llm_last_error") or ""),
         "fallback_provider": fallback_provider,
         "fallback_available": True,
         "embedding_provider": "hash_mock",
@@ -1988,6 +2203,7 @@ def save_llm_config(body: LLMConfigRequest):
             "llm_timeout_seconds": _coerce_llm_timeout(body.timeout_seconds),
             "llm_failure_until": 0.0,
             "llm_last_error": "",
+            "llm_last_failed_provider": "",
         })
         _write_env({
             "LLM_PROVIDER": "spark",
@@ -2007,6 +2223,7 @@ def save_llm_config(body: LLMConfigRequest):
             "llm_timeout_seconds": _coerce_llm_timeout(body.timeout_seconds),
             "llm_failure_until": 0.0,
             "llm_last_error": "",
+            "llm_last_failed_provider": "",
         })
         _write_env({
             "LLM_PROVIDER": "deepseek",
@@ -2023,13 +2240,17 @@ def save_llm_config(body: LLMConfigRequest):
 def test_llm(body: LLMTestRequest):
     start = time.time()
     provider, model, answer = _call_llm(body.provider, body.message, body.model, timeout_seconds=body.timeout_seconds, bypass_failure_cache=True)
+    requested_provider = (body.provider or STATE.get("llm_provider") or "").lower()
+    failed_real_provider = requested_provider in {"spark", "deepseek"} and provider == "mock"
+    failure_reason = _safe_llm_error_message(STATE.get("llm_last_error") or "") if failed_real_provider else ""
     return {
-        "ok": True,
+        "ok": not failed_real_provider,
         "provider": provider,
         "model": model,
-        "response": answer[:500],
+        "response": answer[:500] if not failed_real_provider else "",
         "latency_ms": round((time.time() - start) * 1000, 1),
-        "message": f"{provider} 连接可用" if provider != "mock" else "未配置 API，演示模式可用",
+        "message": failure_reason or (f"{provider} 连接可用" if provider != "mock" else "未配置 API，演示模式可用"),
+        "model_status": _public_model_status(provider, failed_real_provider),
         "fallback_available": True,
     }
 
@@ -2085,12 +2306,14 @@ def dashboard(course_id: int = 1):
 @app.post("/api/app/ask")
 def ask(body: AskRequest):
     question = body.question or body.message or "当前学习主题"
+    intent = _extract_learning_intent(question)
+    clean_topic = intent.get("clean_topic") or question
     provider, model, answer = _call_llm("", question)
     profile = _update_demo_profile(question, "dialogue")
-    ctx = _gaoshu_context(question)
+    ctx = _gaoshu_context(clean_topic)
     if provider != "mock":
         answer = answer + "\n\n依据：内置教材《高数上.pdf》课程上下文。"
-    session = {"id": body.session_id or str(uuid.uuid4()), "title": question[:30], "updated_at": time.strftime("%Y-%m-%d %H:%M:%S")}
+    session = {"id": body.session_id or str(uuid.uuid4()), "title": clean_topic[:30], "updated_at": time.strftime("%Y-%m-%d %H:%M:%S")}
     if not any(s["id"] == session["id"] for s in STATE["sessions"]):
         STATE["sessions"].append(session)
     retrieved_chunks = [
@@ -2110,7 +2333,7 @@ def ask(body: AskRequest):
     risk_level = "medium" if provider == "mock" or not citations else "low"
     grounding_score = 0.62 if risk_level == "medium" else 0.85
     traces = [
-        {"agent": "TutorAgent", "phase": "planning", "status": "completed", "summary": f"识别学习主题：{ctx['keyword']}", "latency_ms": 0},
+        {"agent": "TutorAgent", "phase": "planning", "status": "completed", "summary": f"识别学习主题：{intent.get('topic_label') or ctx['keyword']}；关注：{'、'.join(intent.get('requested_focuses') or [])}", "latency_ms": 0},
         {"agent": "InformerAgent", "phase": "retrieving", "status": "completed", "summary": f"定位教材章节：{ctx['chapter']}", "latency_ms": 0},
         {"agent": "ProfileAgent", "phase": "profiling", "status": "completed", "summary": f"画像版本 #{profile.get('profile_version')} 已更新", "latency_ms": 0},
         {"agent": "VerifierAgent", "phase": "basic_check", "status": "completed", "summary": f"基础可信度 {int(grounding_score * 100)}%，风险 {risk_level}，来源 {provider}", "latency_ms": 0},
@@ -2126,6 +2349,8 @@ def ask(body: AskRequest):
     for item in resource_items:
         item.update({
             "question": question,
+            "topic": clean_topic,
+            "learning_intent": intent,
             "profile": profile,
             "citations": citations,
             "context_chunks": retrieved_chunks,
@@ -2151,6 +2376,8 @@ def ask(body: AskRequest):
         "grounding_score": grounding_score,
         "grounding": {"grounding_score": grounding_score, "risk_level": risk_level, "unsupported_claims": [], "verifier_type": "基础校验/引用完整性/基础可信度"},
         "content_safety": {"safe": True, "risk_level": risk_level},
+        "learning_intent": intent,
+        "model_status": _public_model_status(provider, provider == "mock"),
         "student_profile": profile,
         "profile_metrics": _profile_numeric_metrics(profile),
         "profile_version": profile.get("profile_version"),
@@ -2171,8 +2398,11 @@ def ask(body: AskRequest):
             "profile_updated_fields": profile.get("profile_updated_fields"),
         },
         "resource_package": {
-            "title": f"{ctx['keyword']} · 个性化高数资源包",
-            "topic": question,
+            "title": f"{intent.get('title_stub') or clean_topic} · 个性化高数资源包",
+            "topic": clean_topic,
+            "display_title": intent.get("display_title") or clean_topic,
+            "raw_question": question,
+            "learning_intent": intent,
             "summary": f"基于最近问题、{ctx['chapter']}、画像版本 #{profile.get('profile_version')} 自动规划。",
             "items": resource_items,
             "item_count": len(resource_items),
@@ -2199,6 +2429,8 @@ def ask_stream(body: AskRequest):
         meta = {
             "provider": data["provider"],
             "model": data["model"],
+            "model_status": data.get("model_status"),
+            "learning_intent": data.get("learning_intent"),
             "citations": data["citations"],
             "retrieved_chunks": data.get("retrieved_chunks", []),
             "agent_traces": [
@@ -2221,6 +2453,8 @@ def ask_stream(body: AskRequest):
             "grounding_score": data.get("grounding_score"),
             "grounding": data.get("grounding", {}),
             "content_safety": data.get("content_safety", {}),
+            "model_status": data.get("model_status", {}),
+            "learning_intent": data.get("learning_intent", {}),
             "student_profile": data.get("student_profile", {}),
             "profile_version": data.get("profile_version"),
             "profile_dimensions": data.get("profile_dimensions"),
@@ -2242,7 +2476,7 @@ def app_generate(body: GenerateRequest):
     if body.resource_type not in VALID_DEMO_RESOURCE_TYPES:
         raise HTTPException(status_code=400, detail="unsupported resource_type")
     rid = str(uuid.uuid4())
-    topic = _resolve_generation_topic(body.topic, body.knowledge_point)
+    topic = body.topic or body.knowledge_point or ""
     payload = _generate_resource_payload(body.resource_type, topic, rid)
     item = _store_resource_item(rid, payload, body.resource_type)
     STATE["resources"].append(item)
@@ -2251,7 +2485,7 @@ def app_generate(body: GenerateRequest):
 
 @app.post("/api/resources/generate")
 def resources_generate(body: dict[str, Any]):
-    topic = _resolve_generation_topic(body.get("topic") or "", body.get("knowledge_point") or "")
+    topic = body.get("topic") or body.get("knowledge_point") or ""
     requested = body.get("resource_types") or body.get("types") or [body.get("resource_type") or "lecture_doc"]
     if isinstance(requested, str):
         requested = [requested]

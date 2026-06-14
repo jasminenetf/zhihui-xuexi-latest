@@ -1906,7 +1906,7 @@ async function loadSettings(){
       '<div class="form-group"><label>科大讯飞 模型名称</label><input id="spark-model" class="input" value="' + esc(d.spark_model || sparkDefaults.model) + '"></div>' +
       '<div class="form-group"><label>超时(秒)</label><input id="spark-timeout" class="input" type="number" min="60" max="600" value="180"></div>' +
       '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px"><button class="btn btn-primary" onclick="_saveLlmProvider(\'spark\')">保存科大讯飞配置</button><button class="btn btn-outline" onclick="_testLlmProvider(\'spark\')">测试科大讯飞连接</button></div>' +
-      '<p id="spark-test-result" style="font-size:11px;color:var(--gray-400);margin-top:-6px;margin-bottom:16px">如果从控制台复制了 APIKey:APIPassword，可整串粘贴；系统会原样用于星火兼容接口，密钥不会回显。</p>' +
+      '<p id="spark-test-result" style="font-size:11px;color:var(--gray-400);margin-top:-6px;margin-bottom:16px">星火 OpenAI 兼容接口通常需要 APIPassword，不是普通 AppID；如使用老版 APIKey/APISecret，请确认 base_url、model 和权限已适配。密钥不会回显。</p>' +
       '<div class="form-group"><label>DeepSeek API Key</label><input id="deepseek-api-key" class="input" type="password" placeholder="输入 DeepSeek API Key"></div>' +
       '<div class="form-group"><label>DeepSeek Base URL</label><input id="deepseek-base-url" class="input" value="' + esc(deepseekDefaults.base_url) + '"></div>' +
       '<div class="form-group"><label>DeepSeek 模型名称</label><input id="deepseek-model" class="input" value="' + esc(d.llm_model || deepseekDefaults.model) + '"></div>' +
@@ -1969,24 +1969,29 @@ async function _saveLlmProvider(provider){
 
 async function _testLlmProvider(provider){
   const model = (document.getElementById(provider + '-model') || {}).value || '';
+  const timeoutEl = document.getElementById(provider + '-timeout');
+  const timeoutSeconds = Math.max(60, Math.min(600, Number((timeoutEl && timeoutEl.value) || 180) || 180));
   const resultEl = document.getElementById(provider + '-test-result');
   if (resultEl) resultEl.textContent = '正在测试连接...';
   try {
     const r = await api('/api/settings/test-llm', {
       method: 'POST',
-      body: JSON.stringify({ provider, model, message: '你好，请用一句话确认连接成功' }),
+      body: JSON.stringify({ provider, model, timeout_seconds: timeoutSeconds, message: '你好，请用一句话确认连接成功' }),
     });
     const d = (r.ok && r.data) ? r.data : {};
     if (d.ok) {
-      if (resultEl) resultEl.textContent = '连接成功 · ' + (provider === 'spark' ? 'Spark 真实生成' : '本地演示模板生成') + ' · ' + Math.round(d.latency_ms || 0) + 'ms';
+      if (resultEl) resultEl.textContent = '连接成功 · ' + _publicModelStatus(d) + ' · ' + Math.round(d.latency_ms || 0) + 'ms';
       toast((provider === 'spark' ? '讯飞星火' : 'DeepSeek') + ' 连接测试成功', 'success');
       S.llmProvider = d.provider || provider;
       S.llmModel = d.model || model;
       updateTopbar();
       return;
     }
-    if (resultEl) resultEl.textContent = esc(d.message || d.error || '连接失败');
-    toast(d.message || '连接失败', 'info');
+    const failMsg = d.message || (d.model_status && d.model_status.failure_reason) || '连接失败';
+    if (resultEl) resultEl.textContent = failMsg + '；系统会继续使用本地演示模板。';
+    S.modelStatusLabel = _publicModelStatus(d);
+    updateTopbar();
+    toast(failMsg, 'info');
   } catch (e) {
     if (resultEl) resultEl.textContent = esc(e.message || '连接失败');
     toast(e.message || '连接失败', 'info');
@@ -1999,7 +2004,7 @@ function _finishAskResponse(el, msg, d, box){
   const suggestions = d.resource_suggestions || [];
   const topicFromPackage = d.resource_package && (d.resource_package.topic || d.resource_package.title);
   S.lastQuestion = msg || S.lastQuestion || '';
-  S.lastTopic = msg || topicFromPackage || S.lastTopic || '';
+  S.lastTopic = topicFromPackage || (d.learning_intent && (d.learning_intent.clean_topic || d.learning_intent.display_title)) || msg || S.lastTopic || '';
   S.lastAnswer = answer;
   S.pendingStudyTopic = S.lastTopic;
   S.pendingStudyPlan = null;
@@ -2007,7 +2012,12 @@ function _finishAskResponse(el, msg, d, box){
     S.currentProfile = d.student_profile;
   }
   if (el) {
+    const modelLabel = _publicModelStatus(d);
+    const modelNotice = modelLabel.indexOf('失败') >= 0
+      ? '<div class="course-card" style="margin-top:8px;border-color:#f59e0b;background:#fff7ed"><div class="course-meta"><span>' + esc(modelLabel) + '</span><span>' + esc((d.model_status && d.model_status.failure_reason) || '请在设置页检查 Spark APIPassword / base_url / model') + '</span></div></div>'
+      : '';
     el.innerHTML = '<div class="msg-content">' + esc(answer || '已收到问题，当前环境暂未返回正式答案。') + '</div>' +
+      modelNotice +
       (refs.length ? '<div class="msg-citations">📚 ' + refs.map(x => esc(typeof x === 'string' ? x : (x.source || x.chunk_id || '引用'))).join(' · ') + '</div>' : '') +
       _renderResourceSuggestions(suggestions, msg);
   }
