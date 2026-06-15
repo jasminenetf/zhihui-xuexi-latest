@@ -75,3 +75,12 @@ class EmbeddingService:
         if self._model is not None:
             return self._model.encode([query], normalize_embeddings=True)[0].tolist()
         return self._hash_embed(query)
+
+    def status(self) -> dict[str, object]:
+        """Public embedding status for RAG transparency."""
+        return {
+            "embedding_provider": self.provider,
+            "embedding_model": self.model_name or ("hash_mock" if self.provider == "hash_mock" else ""),
+            "embedding_dim": self.dim,
+            "semantic_embedding": self.provider != "hash_mock",
+        }

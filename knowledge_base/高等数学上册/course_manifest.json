@@ -1,0 +1,37 @@
+{
+  "course_name": "高等数学上册",
+  "project": "智学工坊",
+  "purpose": "作为比赛演示用课程知识库证据层，说明问答、资源生成、学习报告和动画预览的课程依据来源。",
+  "chapters": [
+    "函数与极限",
+    "导数与微分",
+    "微分中值定理与导数应用",
+    "不定积分",
+    "定积分",
+    "定积分应用",
+    "微分方程"
+  ],
+  "rag_status": {
+    "course_reference_enabled": true,
+    "retrieval_mode": "本地快速检索 / 可替换为真实语义检索",
+    "embedding_provider": "hash_mock / sentence-transformers 可切换"
+  },
+  "safety_note": "本目录不包含真实 API 密钥，不包含完整版权教材公开分发，仅保存课程知识结构、样例切片和资源依据示例。",
+  "knowledge_point_count": 42,
+  "resource_types": [
+    "学习讲义",
+    "思维导图",
+    "练习题",
+    "PPT 课件",
+    "学习路径",
+    "视频脚本",
+    "动画预览",
+    "拓展阅读"
+  ],
+  "grounding_strategy": {
+    "chapter_mapping": "先把学生问题映射到高等数学上册的 7 个章节。",
+    "knowledge_point_mapping": "再匹配 knowledge_points.json 中的结构化知识点、前置关系和常见误区。",
+    "rag_retrieval": "根据主题检索课程切片或证据层样例，形成回答和资源生成依据。",
+    "verifier_check": "对生成内容做引用覆盖、支持断言和无依据断言检查。"
+  }
+}

@@ -26,6 +26,17 @@ logger = logging.getLogger(__name__)
 
 ERR_LLM_FAILED = "LLM_FAILED"
 
+PROFILE_DIMENSION_DEFAULTS = {
+    "知识基础": "待识别",
+    "学习目标": "理解核心概念并完成基础练习",
+    "薄弱知识点": ["待识别"],
+    "认知风格": "偏好分步骤讲解",
+    "资源偏好": ["讲义", "思维导图", "练习题"],
+    "错题类型": ["待积累"],
+    "掌握度变化": "暂无足够数据",
+    "学习节奏": "正常",
+}
+
 
 def answer_workspace_question(*, body: Any, user: User, session: Session) -> dict[str, Any]:
     """Run multi-agent Q&A with fallback and side effects."""
@@ -60,18 +71,28 @@ def answer_workspace_question(*, body: Any, user: User, session: Session) -> dic
         mastery=result.get("student_profile", {}),
     )
 
+    profile_public = _public_profile_payload(result.get("student_profile", {}), result.get("profile_delta", {}))
+
     response_payload = ok({
         "answer": answer_text,
         "course_name": course_name or result.get("course_name", ""),
         "provider": result.get("provider", "unknown"),
         "model": result.get("model", "unknown"),
+        "model_status": result.get("model_status", {}),
         "citations": citations,
         "agent_traces": result.get("agent_traces", []),
         "profile_delta": result.get("profile_delta", {}),
-        "student_profile": result.get("student_profile", {}),
+        "student_profile": profile_public,
+        "profile_version": profile_public.get("profile_version"),
+        "profile_dimensions": profile_public.get("profile_dimensions"),
+        "profile_updated_fields": profile_public.get("profile_updated_fields"),
+        "profile_summary": profile_public.get("profile_summary"),
+        "next_recommendation": profile_public.get("next_recommendation"),
         "verifier_score": result.get("verifier_score", 0.0),
+        "verification": result.get("verification", {}),
         "grounding_score": grounding.get("grounding_score", 0.0),
         "grounding": grounding,
+        "rag_status": result.get("rag_status", {}),
         "content_safety": safety,
         "generated_artifacts": result.get("generated_artifacts", {}),
         "resource_suggestions": resource_suggestions,
@@ -138,15 +159,64 @@ def _update_profile_from_question(*, body: Any, user: User, session: Session, re
             session,
             source="ask",
         )
-        if not response_payload["data"].get("student_profile"):
-            response_payload["data"]["student_profile"] = {
-                "knowledge_level": extracted.get("knowledge_level"),
-                "learning_goal": extracted.get("learning_goal"),
-                "weak_points": extracted.get("weak_points"),
-                "emotion_tendency": extracted.get("emotion_tendency"),
-            }
+        enriched = _public_profile_payload(extracted, response_payload["data"].get("profile_delta", {}), question=body.question)
+        response_payload["data"]["student_profile"] = enriched
+        response_payload["data"]["profile_version"] = enriched.get("profile_version")
+        response_payload["data"]["profile_dimensions"] = enriched.get("profile_dimensions")
+        response_payload["data"]["profile_updated_fields"] = enriched.get("profile_updated_fields")
+        response_payload["data"]["profile_summary"] = enriched.get("profile_summary")
+        response_payload["data"]["next_recommendation"] = enriched.get("next_recommendation")
     except Exception:
         logger.exception("Failed to update profile from ask")
+
+
+def _public_profile_payload(profile: dict[str, Any] | None, delta: dict[str, Any] | None = None, question: str = "") -> dict[str, Any]:
+    profile = dict(profile or {})
+    delta = dict(delta or {})
+    weak_points = _profile_weak_points(question or profile.get("last_topic") or delta.get("last_topic") or "", profile, delta)
+    resource_pref = _listify(profile.get("resource_preference") or delta.get("resource_preference")) or ["讲义", "思维导图", "练习题"]
+    wrong_types = _listify(profile.get("wrong_question_types") or delta.get("wrong_question_types")) or ["待积累"]
+    dimensions = dict(PROFILE_DIMENSION_DEFAULTS)
+    dimensions.update({
+        "知识基础": profile.get("knowledge_level") or delta.get("knowledge_level") or "待识别",
+        "学习目标": profile.get("learning_goal") or "理解核心概念并完成基础练习",
+        "薄弱知识点": weak_points or ["待识别"],
+        "认知风格": profile.get("cognitive_style") or delta.get("cognitive_style") or "偏好分步骤讲解",
+        "资源偏好": [str(x) for x in resource_pref],
+        "错题类型": wrong_types,
+        "掌握度变化": profile.get("mastery_trend") or "暂无足够数据",
+        "学习节奏": profile.get("pace_preference") or "正常",
+    })
+    updated = ["薄弱知识点", "资源偏好"] if weak_points and weak_points != ["待识别"] else []
+    if delta.get("cognitive_style"):
+        updated.append("认知风格")
+    profile.update({
+        "profile_version": int(profile.get("profile_version") or delta.get("interaction_count") or 1),
+        "profile_dimensions": dimensions,
+        "profile_updated_fields": list(dict.fromkeys(updated or ["学习目标"])),
+        "profile_summary": f"当前学生对《高等数学上册》的{dimensions['薄弱知识点'][0] if isinstance(dimensions['薄弱知识点'], list) else dimensions['薄弱知识点']}仍需巩固，适合先概念后练习。",
+        "next_recommendation": f"建议先复习{dimensions['薄弱知识点'][0] if isinstance(dimensions['薄弱知识点'], list) else '当前知识点'}，再完成 3 道概念辨析题。",
+    })
+    return profile
+
+
+def _listify(value: Any) -> list[str]:
+    if not value:
+        return []
+    if isinstance(value, list):
+        return [str(x) for x in value if str(x).strip()]
+    return [str(value)] if str(value).strip() else []
+
+
+def _profile_weak_points(text: str, profile: dict[str, Any], delta: dict[str, Any]) -> list[str]:
+    existing = _listify(profile.get("weak_points") or delta.get("weak_points") or delta.get("weakness_triggered"))
+    if "极限" in text:
+        return ["函数极限", "极限定义理解"]
+    if "积分" in text:
+        return ["积分概念", "定积分几何意义"]
+    if "导数" in text or "微分" in text:
+        return ["导数定义", "变化率理解"]
+    return existing or ["待识别"]
 
 
 def _store_ask_audit(*, body: Any, user: User, session: Session, citations: list[Any], response_payload: dict[str, Any]) -> None:

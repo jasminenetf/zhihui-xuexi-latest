@@ -52,7 +52,7 @@ def build_course_index(course_id: int, session: Session) -> dict:
     if not chunks:
         return {"error": "no chunks found for this course", "course_id": course_id}
 
-    _, vs = _get_services()
+    embedding, vs = _get_services()
     chunk_dicts = [
         {
             "chunk_id": c.id,
@@ -70,7 +70,8 @@ def build_course_index(course_id: int, session: Session) -> dict:
         "course_id": course_id,
         "indexed_chunks": result["indexed"],
         "collection": settings.CHROMA_COLLECTION_NAME,
-        "provider": settings.EMBEDDING_PROVIDER,
+        "provider": embedding.provider,
+        "rag_status": _rag_status_payload(vector_count=result["indexed"], embedding=embedding),
     }
 
 
@@ -81,24 +82,34 @@ def search_course(course_id: int, query: str, top_k: int, session: Session) -> d
         return {"error": "course not found", "course_id": course_id}
 
     top_k = min(top_k, MAX_TOP_K)
-    _, vs = _get_services()
+    embedding, vs = _get_services()
     results = vs.search(query=query, course_id=course_id, top_k=top_k)
     return {
         "course_id": course_id,
         "query": query,
         "results": results,
+        "rag_status": _rag_status_payload(
+            vector_count=len(results),
+            embedding=embedding,
+            course_references_enabled=True,
+        ),
     }
 
 
 def search_all_courses(query: str, top_k: int, session: Session) -> dict:
     """Search across all courses (no course_id filter)."""
     top_k = min(top_k, MAX_TOP_K)
-    _, vs = _get_services()
+    embedding, vs = _get_services()
     results = vs.search(query=query, course_id=None, top_k=top_k)
     return {
         "course_id": None,
         "query": query,
         "results": results,
+        "rag_status": _rag_status_payload(
+            vector_count=len(results),
+            embedding=embedding,
+            course_references_enabled=False,
+        ),
     }
 
 
@@ -125,10 +136,30 @@ def get_rag_status() -> dict:
     except Exception as exc:
         logger.warning("RAG status count failed: %s", exc)
         vector_count = 0
+    embedding, _ = _get_services()
     return {
         "collection": settings.CHROMA_COLLECTION_NAME,
         "persist_dir": settings.CHROMA_PERSIST_DIR,
-        "embedding_provider": settings.EMBEDDING_PROVIDER,
-        "embedding_dim": settings.EMBEDDING_DIM,
+        "retrieval_mode": settings.RAG_RETRIEVAL_MODE,
+        "course_references_enabled": True,
+        "embedding_provider": embedding.provider,
+        "embedding_dim": embedding.dim,
+        "embedding_status": embedding.status(),
         "vector_count": vector_count,
+    }
+
+
+def _rag_status_payload(
+    *,
+    vector_count: int,
+    embedding: EmbeddingService,
+    course_references_enabled: bool = True,
+) -> dict:
+    return {
+        "course_references_enabled": course_references_enabled,
+        "course_reference_label": "课程引用已启用" if course_references_enabled else "跨课程检索",
+        "retrieval_mode": settings.RAG_RETRIEVAL_MODE,
+        "embedding_provider": embedding.provider,
+        "embedding_status": embedding.status(),
+        "matched_chunks": vector_count,
     }

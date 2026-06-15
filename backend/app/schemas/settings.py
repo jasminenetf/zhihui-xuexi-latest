@@ -17,6 +17,10 @@ class SettingsStatusResponse(BaseModel):
     fallback_available: bool = False
     embedding_provider: str
     embedding_is_mock: bool = True
+    model_status: dict = Field(default_factory=dict)
+    rag_status: dict = Field(default_factory=dict)
+    retrieval_mode: str = ""
+    course_references_enabled: bool = True
 
 
 class LLMConfigRequest(BaseModel):

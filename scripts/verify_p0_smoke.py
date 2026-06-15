@@ -13,6 +13,7 @@ DEMO_USERNAME = os.environ.get("P0_DEMO_USERNAME", "demo_student")
 DEMO_PASSWORD = os.environ.get("P0_DEMO_PASSWORD", "demo_pass_12345")
 DEMO_COURSE_NAME = os.environ.get("P0_DEMO_COURSE_NAME", "高等数学上册")
 REQUIRE_DEMO = os.environ.get("P0_REQUIRE_DEMO", "0").lower() in {"1", "true", "yes", "on"}
+TEST_PREFIX = "P0_SMOKE_"
 
 
 def get(path: str, token: str | None = None, timeout: int = 8) -> tuple[int, dict]:
@@ -225,7 +226,7 @@ def main() -> int:
     # register + login + dashboard
     import time
 
-    user = f"verify_{int(time.time())}"
+    user = f"{TEST_PREFIX}verify_{int(time.time())}"
     password = "verify_pass_12345"
     st, reg = post("/api/auth/register", {"username": user, "password": password, "role": "teacher"})
     if st not in (200, 201) and not (st == 400 and "already" in str(reg).lower()):
@@ -247,7 +248,7 @@ def main() -> int:
         else:
             print("[PASS] GET /api/settings/status open")
 
-        st, _ = post("/api/courses", {"name": "x", "description": "y"}, token)
+        st, _ = post("/api/courses", {"name": f"{TEST_PREFIX}临时课程", "description": f"{TEST_PREFIX}仅用于接口冒烟，reset_demo_state.py 可清理"}, token)
         if st != 200:
             fails.append(f"open create course expected 200 got {st}")
         else:
@@ -325,13 +326,13 @@ def main() -> int:
             "/api/app/quiz/submit",
             {
                 "course_id": 1,
-                "topic": "P0 Smoke 知识点",
-                "question_text": "什么是函数极限？",
+                "topic": f"{TEST_PREFIX}知识点",
+                "question_text": f"{TEST_PREFIX} 什么是函数极限？",
                 "selected_answer": "A",
                 "correct_answer": "B",
                 "is_correct": False,
-                "knowledge_point": "P0 Smoke 知识点",
-                "explanation": "用于验证掌握度更新链路",
+                "knowledge_point": f"{TEST_PREFIX}知识点",
+                "explanation": f"{TEST_PREFIX}用于验证掌握度更新链路",
             },
             token,
         )

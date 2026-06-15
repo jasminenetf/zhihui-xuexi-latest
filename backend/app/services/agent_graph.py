@@ -15,7 +15,7 @@ from langgraph.graph import StateGraph, END
 from sqlmodel import Session
 
 from app.models.user import User
-from app.services.llm_provider import get_llm_provider
+from app.services.llm_provider import get_llm_provider, model_status_from_response
 from app.services.prompt_builder import build_rag_prompt
 from app.services.rag_service import search_course
 
@@ -67,6 +67,10 @@ class GraphState(TypedDict):
     retry_count: int
     profile_delta: dict
     generated_artifacts: dict
+    model_status: dict
+    rag_status: dict
+    provider: str
+    model: str
 
 # ═══════════════════════════════════════════════════════════════════════
 # Helpers
@@ -153,6 +157,10 @@ def supervisor_node(state: GraphState) -> dict:
         "retry_count": 0,
         "profile_delta": {},
         "generated_artifacts": {},
+        "model_status": {},
+        "rag_status": {},
+        "provider": "",
+        "model": "",
     }
 
 
@@ -166,9 +174,9 @@ def profile_node(state: GraphState) -> dict:
     weakness = ""
     detected = []
     topic_patterns = [
-        (r"导数|求导|微分|切线|变化率", "导数与微分"),
-        (r"极限|连续性|无穷小|夹逼", "极限与连续"),
-        (r"积分|不定积分|定积分|微积分基本定理", "积分运算"),
+        (r"导数|求导|微分|切线|变化率", "导数定义 / 变化率理解"),
+        (r"极限|函数极限|连续性|无穷小|夹逼", "函数极限 / 极限定义理解"),
+        (r"积分|不定积分|定积分|微积分基本定理", "积分概念 / 定积分几何意义"),
         (r"中值定理|罗尔|拉格朗日|柯西|泰勒", "微分中值定理"),
         (r"级数|收敛|幂级数|傅里叶", "无穷级数"),
     ]
@@ -183,8 +191,13 @@ def profile_node(state: GraphState) -> dict:
         "needs_examples": style == "practice_oriented",
         "needs_step_by_step": level == "beginner" or "步骤" in q,
         "detected_weakness": weakness,
+        "weak_points": detected or ["待识别"],
+        "resource_preference": ["讲义", "思维导图", "练习题"],
+        "wrong_question_types": ["待积累"],
+        "mastery_trend": "暂无足够数据",
         "learning_goal": "考研复习" if "考研" in q else "课程学习",
         "pace_preference": "slow" if level == "beginner" else "normal",
+        "profile_updated_fields": ["薄弱知识点", "认知风格"] if detected else ["认知风格"],
     }
 
     return {
@@ -242,6 +255,7 @@ def rag_node(state: GraphState, session: Session) -> dict:
     return {
         "retrieved_chunks": chunks,
         "citations": citations,
+        "rag_status": result.get("rag_status", {}),
         "error": None,
         "agent_trace": [_trace_entry("InformerAgent", "completed", msg)],
     }
@@ -304,6 +318,9 @@ def lecture_node(state: GraphState) -> dict:
 
     return {
         "draft_answer": answer,
+        "provider": resp.provider,
+        "model": resp.model,
+        "model_status": model_status_from_response(resp),
         "agent_trace": [_trace_entry(
             "TutorAgent", "completed",
             f"已生成回答（{len(answer)}字符），基于{len(chunks)}个知识切片"
@@ -312,44 +329,82 @@ def lecture_node(state: GraphState) -> dict:
 
 
 def verify_answer_quality(draft: str, citations: list, chunks: list) -> dict:
-    """Standalone VerifierAgent logic for stream and graph paths."""
-    reasons = []
-    all_ok = True
-
-    checks = [
-        (bool(draft), "draft_answer is not empty"),
-        (bool(citations), "citations is not empty"),
-        (bool(chunks), "retrieved_chunks is not empty"),
-    ]
-    for ok, msg in checks:
-        if not ok:
-            reasons.append(f"FAIL: {msg}")
-            all_ok = False
+    """VerifierAgent: citation coverage check, not a vague truth claim."""
+    claims = _extract_answer_claims(draft)
+    chunk_texts = [str(c.get("content") or c.get("snippet") or "") for c in (chunks or [])]
+    supported: list[str] = []
+    unsupported: list[str] = []
+    for claim in claims:
+        if _claim_supported_by_chunks(claim, chunk_texts):
+            supported.append(claim)
         else:
-            reasons.append(f"PASS: {msg}")
+            unsupported.append(claim)
 
-    if all_ok and draft and chunks:
-        chunk_count = len(chunks)
-        base_score = min(0.7 + (chunk_count * 0.04), 0.95)
-        has_content = any(c.get("content") for c in citations)
-        score = base_score + (0.05 if has_content else 0)
-        verdict = "passed"
-        msg = f"完成事实性审查，未发现逻辑幻觉，学术安全通过（置信度{score:.2f}）"
+    total_claims = len(claims)
+    supported_count = len(supported)
+    citation_coverage = round(supported_count / total_claims, 2) if total_claims else (1.0 if citations and draft else 0.0)
+    if not citations or not chunks:
+        risk_level = "high"
+    elif citation_coverage >= 0.75 and not unsupported:
+        risk_level = "low"
+    elif citation_coverage >= 0.45:
+        risk_level = "medium"
     else:
-        score = 0.3
-        verdict = "failed"
-        msg = "验证未通过：回答完整性不足或缺乏足够的引用支撑"
+        risk_level = "high"
+
+    score = citation_coverage
+    verdict = "passed" if risk_level != "high" else "needs_review"
+    msg = f"引用覆盖率 {round(citation_coverage * 100)}%，支持断言 {supported_count} 条，无依据断言 {len(unsupported)} 条，风险 {risk_level}"
 
     return {
-        "verified_answer": draft if all_ok else "",
+        "verified_answer": draft if draft else "",
         "verifier_score": score,
-        "verification": {"verdict": verdict, "reasons": reasons},
+        "verification": {
+            "verdict": verdict,
+            "citation_coverage": citation_coverage,
+            "supported_claim_count": supported_count,
+            "unsupported_claims": unsupported[:5],
+            "unsupported_claim_count": len(unsupported),
+            "risk_level": risk_level,
+            "claims_checked": total_claims,
+        },
         "trace": _trace_entry(
             "VerifierAgent",
-            "completed" if all_ok else "failed",
+            "completed" if draft else "failed",
             msg,
+            phase="verifying",
+            output={
+                "citation_coverage": citation_coverage,
+                "supported_claim_count": supported_count,
+                "unsupported_claim_count": len(unsupported),
+                "risk_level": risk_level,
+            },
         ),
     }
+
+
+def _extract_answer_claims(answer: str) -> list[str]:
+    if not answer:
+        return []
+    parts = re.split(r"[。！？；\n]+", answer)
+    claims: list[str] = []
+    for part in parts:
+        text = re.sub(r"\s+", "", part)
+        if len(text) >= 12 and not text.startswith(("【", "参考", "来源")):
+            claims.append(text[:120])
+    return claims[:12]
+
+
+def _claim_supported_by_chunks(claim: str, chunk_texts: list[str]) -> bool:
+    keywords = re.findall(r"[\u4e00-\u9fff]{2,}|[A-Za-z]{3,}|\d+", claim)
+    keywords = [k for k in keywords if k not in {"这个", "因此", "所以", "可以", "需要", "我们", "如果", "因为"}]
+    if not keywords:
+        return bool(chunk_texts)
+    for chunk in chunk_texts:
+        hit = sum(1 for keyword in keywords[:12] if keyword in chunk)
+        if hit >= max(1, min(3, len(keywords) // 3)):
+            return True
+    return False
 
 
 def verifier_node(state: GraphState) -> dict:
@@ -558,6 +613,10 @@ def run_tutor_graph(
             "retry_count": 0,
             "profile_delta": {},
             "generated_artifacts": {},
+            "model_status": {},
+            "rag_status": {},
+            "provider": "",
+            "model": "",
         }
 
         config = {"configurable": {_SESSION_KEY: session}}
@@ -584,6 +643,12 @@ def run_tutor_graph(
             "verifier_score": result.get("verifier_score", 0.0),
             "student_profile": result.get("student_profile", {}),
             "generated_artifacts": result.get("generated_artifacts", {}),
+            "retrieved_chunks": result.get("retrieved_chunks", []),
+            "verification": result.get("verification", {}),
+            "model_status": result.get("model_status", {}),
+            "rag_status": result.get("rag_status", {}),
+            "provider": result.get("provider", ""),
+            "model": result.get("model", ""),
             "error": result.get("error"),
         }
     finally:
@@ -606,7 +671,7 @@ def build_stream_agent_traces(
         _trace_entry("LectureAgent", "completed", "已构建带引用的 RAG 提示词"),
     ]
     if phase == "streaming":
-        traces.append(_trace_entry("VerifierAgent", "running", f"正在通过 {provider} 流式生成并校验回答"))
+        traces.append(_trace_entry("VerifierAgent", "running", "正在进行引用覆盖检查"))
     else:
         if verifier_trace:
             traces.append(verifier_trace)

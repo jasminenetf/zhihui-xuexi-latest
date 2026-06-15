@@ -68,8 +68,10 @@ def _require_admin():
 @router.get("/status", response_model=SettingsStatusResponse)
 def api_settings_status():
     """Return current app configuration status without exposing keys."""
-    from app.services.llm_provider import get_llm_provider
+    from app.services.llm_provider import get_llm_provider, model_status
+    from app.services.rag_service import get_rag_status
     provider = get_llm_provider()
+    rag_status = get_rag_status()
     spark_password = settings.SPARK_API_PASSWORD or settings.SPARK_API_KEY
     fallback_available = bool(settings.DEEPSEEK_API_KEY) if provider.provider == "spark" else (
         bool(settings.SPARK_API_PASSWORD or settings.SPARK_API_KEY) and settings.SPARK_ENABLED
@@ -88,6 +90,10 @@ def api_settings_status():
         fallback_available=fallback_available,
         embedding_provider=settings.EMBEDDING_PROVIDER,
         embedding_is_mock=(settings.EMBEDDING_PROVIDER == "hash_mock"),
+        model_status=model_status(provider=provider.provider, model=provider.model),
+        rag_status=rag_status,
+        retrieval_mode=str(rag_status.get("retrieval_mode") or ""),
+        course_references_enabled=bool(rag_status.get("course_references_enabled", True)),
     )
 
 

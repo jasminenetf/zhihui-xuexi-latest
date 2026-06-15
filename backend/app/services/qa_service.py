@@ -4,7 +4,8 @@ from sqlmodel import Session
 
 from app.models.course import Course
 from app.models.user import User
-from app.services.llm_provider import get_llm_provider
+from app.services.agent_graph import verify_answer_quality
+from app.services.llm_provider import get_llm_provider, model_status_from_response
 from app.services.prompt_builder import build_rag_prompt
 from app.services.rag_service import search_course
 
@@ -58,6 +59,7 @@ def answer_course_question(
             "score": c.get("score"),
         })
 
+    verification = verify_answer_quality(resp.content, citations, chunks)
     return {
         "course_id": course_id,
         "course_name": course.name,
@@ -65,8 +67,12 @@ def answer_course_question(
         "answer": resp.content,
         "provider": resp.provider,
         "model": resp.model,
+        "model_status": model_status_from_response(resp),
         "citations": citations,
         "retrieved_chunks": chunks,
+        "verification": verification.get("verification", {}),
+        "verifier_score": verification.get("verifier_score", 0.0),
+        "rag_status": search_result.get("rag_status", {}),
     }
 
 
@@ -111,4 +117,5 @@ def prepare_stream_answer(
         "messages": messages,
         "citations": citations,
         "retrieved_chunks": chunks,
+        "rag_status": search_result.get("rag_status", {}),
     }

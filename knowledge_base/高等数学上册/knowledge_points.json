@@ -1,0 +1,928 @@
+{
+  "course_name": "高等数学上册",
+  "knowledge_points": [
+    {
+      "id": "G1-001",
+      "chapter": "函数与极限",
+      "name": "函数定义域",
+      "type": "基础概念",
+      "prerequisite": [],
+      "explanation_goal": "能用自己的话说明「函数定义域」解决什么问题，并能指出适用条件。",
+      "common_mistakes": [
+        "只记住「函数定义域」的公式或名称，没有说明条件。",
+        "跳过题目对象和适用范围，直接套步骤。"
+      ],
+      "recommended_resources": [
+        "学习讲义",
+        "思维导图",
+        "练习题",
+        "动画预览"
+      ],
+      "suitable_animation": false,
+      "suitable_quiz_type": "概念辨析题"
+    },
+    {
+      "id": "G1-002",
+      "chapter": "函数与极限",
+      "name": "函数单调性",
+      "type": "函数性质",
+      "prerequisite": [
+        "函数定义域"
+      ],
+      "explanation_goal": "能用自己的话说明「函数单调性」解决什么问题，并能指出适用条件。",
+      "common_mistakes": [
+        "只记住「函数单调性」的公式或名称，没有说明条件。",
+        "跳过题目对象和适用范围，直接套步骤。"
+      ],
+      "recommended_resources": [
+        "学习讲义",
+        "思维导图",
+        "练习题",
+        "动画预览"
+      ],
+      "suitable_animation": false,
+      "suitable_quiz_type": "条件判断题"
+    },
+    {
+      "id": "G1-003",
+      "chapter": "函数与极限",
+      "name": "函数奇偶性",
+      "type": "函数性质",
+      "prerequisite": [
+        "函数定义域"
+      ],
+      "explanation_goal": "能用自己的话说明「函数奇偶性」解决什么问题，并能指出适用条件。",
+      "common_mistakes": [
+        "只记住「函数奇偶性」的公式或名称，没有说明条件。",
+        "跳过题目对象和适用范围，直接套步骤。"
+      ],
+      "recommended_resources": [
+        "学习讲义",
+        "思维导图",
+        "练习题",
+        "动画预览"
+      ],
+      "suitable_animation": false,
+      "suitable_quiz_type": "条件判断题"
+    },
+    {
+      "id": "G1-004",
+      "chapter": "函数与极限",
+      "name": "数列极限",
+      "type": "极限基础",
+      "prerequisite": [],
+      "explanation_goal": "能用自己的话说明「数列极限」解决什么问题，并能指出适用条件。",
+      "common_mistakes": [
+        "只记住「数列极限」的公式或名称，没有说明条件。",
+        "跳过题目对象和适用范围，直接套步骤。"
+      ],
+      "recommended_resources": [
+        "学习讲义",
+        "思维导图",
+        "练习题",
+        "动画预览"
+      ],
+      "suitable_animation": false,
+      "suitable_quiz_type": "条件判断题"
+    },
+    {
+      "id": "G1-005",
+      "chapter": "函数与极限",
+      "name": "函数极限",
+      "type": "极限基础",
+      "prerequisite": [
+        "函数定义域"
+      ],
+      "explanation_goal": "能用自己的话说明「函数极限」解决什么问题，并能指出适用条件。",
+      "common_mistakes": [
+        "只记住「函数极限」的公式或名称，没有说明条件。",
+        "跳过题目对象和适用范围，直接套步骤。"
+      ],
+      "recommended_resources": [
+        "学习讲义",
+        "思维导图",
+        "练习题",
+        "动画预览"
+      ],
+      "suitable_animation": true,
+      "suitable_quiz_type": "条件判断题"
+    },
+    {
+      "id": "G1-006",
+      "chapter": "函数与极限",
+      "name": "左极限与右极限",
+      "type": "极限条件",
+      "prerequisite": [
+        "函数极限"
+      ],
+      "explanation_goal": "能用自己的话说明「左极限与右极限」解决什么问题，并能指出适用条件。",
+      "common_mistakes": [
+        "只记住「左极限与右极限」的公式或名称，没有说明条件。",
+        "跳过题目对象和适用范围，直接套步骤。"
+      ],
+      "recommended_resources": [
+        "学习讲义",
+        "思维导图",
+        "练习题",
+        "动画预览"
+      ],
+      "suitable_animation": false,
+      "suitable_quiz_type": "条件判断题"
+    },
+    {
+      "id": "G1-007",
+      "chapter": "函数与极限",
+      "name": "无穷小",
+      "type": "极限工具",
+      "prerequisite": [
+        "函数极限"
+      ],
+      "explanation_goal": "能用自己的话说明「无穷小」解决什么问题，并能指出适用条件。",
+      "common_mistakes": [
+        "只记住「无穷小」的公式或名称，没有说明条件。",
+        "跳过题目对象和适用范围，直接套步骤。"
+      ],
+      "recommended_resources": [
+        "学习讲义",
+        "思维导图",
+        "练习题",
+        "动画预览"
+      ],
+      "suitable_animation": false,
+      "suitable_quiz_type": "条件判断题"
+    },
+    {
+      "id": "G1-008",
+      "chapter": "函数与极限",
+      "name": "无穷大",
+      "type": "极限工具",
+      "prerequisite": [
+        "函数极限"
+      ],
+      "explanation_goal": "能用自己的话说明「无穷大」解决什么问题，并能指出适用条件。",
+      "common_mistakes": [
+        "只记住「无穷大」的公式或名称，没有说明条件。",
+        "跳过题目对象和适用范围，直接套步骤。"
+      ],
+      "recommended_resources": [
+        "学习讲义",
+        "思维导图",
+        "练习题",
+        "动画预览"
+      ],
+      "suitable_animation": false,
+      "suitable_quiz_type": "条件判断题"
+    },
+    {
+      "id": "G1-009",
+      "chapter": "函数与极限",
+      "name": "极限运算法则",
+      "type": "计算方法",
+      "prerequisite": [
+        "函数极限"
+      ],
+      "explanation_goal": "能用自己的话说明「极限运算法则」解决什么问题，并能指出适用条件。",
+      "common_mistakes": [
+        "只记住「极限运算法则」的公式或名称，没有说明条件。",
+        "跳过题目对象和适用范围，直接套步骤。"
+      ],
+      "recommended_resources": [
+        "学习讲义",
+        "思维导图",
+        "练习题",
+        "动画预览"
+      ],
+      "suitable_animation": false,
+      "suitable_quiz_type": "条件判断题"
+    },
+    {
+      "id": "G1-010",
+      "chapter": "函数与极限",
+      "name": "两个重要极限",
+      "type": "计算方法",
+      "prerequisite": [
+        "极限运算法则"
+      ],
+      "explanation_goal": "能用自己的话说明「两个重要极限」解决什么问题，并能指出适用条件。",
+      "common_mistakes": [
+        "只记住「两个重要极限」的公式或名称，没有说明条件。",
+        "跳过题目对象和适用范围，直接套步骤。"
+      ],
+      "recommended_resources": [
+        "学习讲义",
+        "思维导图",
+        "练习题",
+        "动画预览"
+      ],
+      "suitable_animation": false,
+      "suitable_quiz_type": "条件判断题"
+    },
+    {
+      "id": "G1-011",
+      "chapter": "函数与极限",
+      "name": "函数连续",
+      "type": "连续性",
+      "prerequisite": [
+        "函数极限"
+      ],
+      "explanation_goal": "能用自己的话说明「函数连续」解决什么问题，并能指出适用条件。",
+      "common_mistakes": [
+        "只记住「函数连续」的公式或名称，没有说明条件。",
+        "跳过题目对象和适用范围，直接套步骤。"
+      ],
+      "recommended_resources": [
+        "学习讲义",
+        "思维导图",
+        "练习题",
+        "动画预览"
+      ],
+      "suitable_animation": false,
+      "suitable_quiz_type": "条件判断题"
+    },
+    {
+      "id": "G1-012",
+      "chapter": "函数与极限",
+      "name": "间断点分类",
+      "type": "连续性",
+      "prerequisite": [
+        "函数连续"
+      ],
+      "explanation_goal": "能用自己的话说明「间断点分类」解决什么问题，并能指出适用条件。",
+      "common_mistakes": [
+        "只记住「间断点分类」的公式或名称，没有说明条件。",
+        "跳过题目对象和适用范围，直接套步骤。"
+      ],
+      "recommended_resources": [
+        "学习讲义",
+        "思维导图",
+        "练习题",
+        "动画预览"
+      ],
+      "suitable_animation": false,
+      "suitable_quiz_type": "条件判断题"
+    },
+    {
+      "id": "G2-001",
+      "chapter": "导数与微分",
+      "name": "导数定义",
+      "type": "导数基础",
+      "prerequisite": [
+        "函数极限"
+      ],
+      "explanation_goal": "能用自己的话说明「导数定义」解决什么问题，并能指出适用条件。",
+      "common_mistakes": [
+        "只记住「导数定义」的公式或名称，没有说明条件。",
+        "跳过题目对象和适用范围，直接套步骤。"
+      ],
+      "recommended_resources": [
+        "学习讲义",
+        "练习题",
+        "动画预览",
+        "PPT 课件"
+      ],
+      "suitable_animation": true,
+      "suitable_quiz_type": "概念辨析题"
+    },
+    {
+      "id": "G2-002",
+      "chapter": "导数与微分",
+      "name": "导数几何意义",
+      "type": "导数基础",
+      "prerequisite": [
+        "导数定义"
+      ],
+      "explanation_goal": "能用自己的话说明「导数几何意义」解决什么问题，并能指出适用条件。",
+      "common_mistakes": [
+        "只记住「导数几何意义」的公式或名称，没有说明条件。",
+        "跳过题目对象和适用范围，直接套步骤。"
+      ],
+      "recommended_resources": [
+        "学习讲义",
+        "练习题",
+        "动画预览",
+        "PPT 课件"
+      ],
+      "suitable_animation": true,
+      "suitable_quiz_type": "条件判断题"
+    },
+    {
+      "id": "G2-003",
+      "chapter": "导数与微分",
+      "name": "基本求导公式",
+      "type": "计算方法",
+      "prerequisite": [
+        "导数定义"
+      ],
+      "explanation_goal": "能用自己的话说明「基本求导公式」解决什么问题，并能指出适用条件。",
+      "common_mistakes": [
+        "只记住「基本求导公式」的公式或名称，没有说明条件。",
+        "跳过题目对象和适用范围，直接套步骤。"
+      ],
+      "recommended_resources": [
+        "学习讲义",
+        "练习题",
+        "动画预览",
+        "PPT 课件"
+      ],
+      "suitable_animation": false,
+      "suitable_quiz_type": "步骤计算题"
+    },
+    {
+      "id": "G2-004",
+      "chapter": "导数与微分",
+      "name": "复合函数求导",
+      "type": "计算方法",
+      "prerequisite": [
+        "基本求导公式"
+      ],
+      "explanation_goal": "能用自己的话说明「复合函数求导」解决什么问题，并能指出适用条件。",
+      "common_mistakes": [
+        "只记住「复合函数求导」的公式或名称，没有说明条件。",
+        "跳过题目对象和适用范围，直接套步骤。"
+      ],
+      "recommended_resources": [
+        "学习讲义",
+        "练习题",
+        "动画预览",
+        "PPT 课件"
+      ],
+      "suitable_animation": false,
+      "suitable_quiz_type": "步骤计算题"
+    },
+    {
+      "id": "G2-005",
+      "chapter": "导数与微分",
+      "name": "隐函数求导",
+      "type": "计算方法",
+      "prerequisite": [
+        "复合函数求导"
+      ],
+      "explanation_goal": "能用自己的话说明「隐函数求导」解决什么问题，并能指出适用条件。",
+      "common_mistakes": [
+        "只记住「隐函数求导」的公式或名称，没有说明条件。",
+        "跳过题目对象和适用范围，直接套步骤。"
+      ],
+      "recommended_resources": [
+        "学习讲义",
+        "练习题",
+        "动画预览",
+        "PPT 课件"
+      ],
+      "suitable_animation": false,
+      "suitable_quiz_type": "步骤计算题"
+    },
+    {
+      "id": "G2-006",
+      "chapter": "导数与微分",
+      "name": "高阶导数",
+      "type": "导数应用",
+      "prerequisite": [
+        "基本求导公式"
+      ],
+      "explanation_goal": "能用自己的话说明「高阶导数」解决什么问题，并能指出适用条件。",
+      "common_mistakes": [
+        "只记住「高阶导数」的公式或名称，没有说明条件。",
+        "跳过题目对象和适用范围，直接套步骤。"
+      ],
+      "recommended_resources": [
+        "学习讲义",
+        "练习题",
+        "动画预览",
+        "PPT 课件"
+      ],
+      "suitable_animation": false,
+      "suitable_quiz_type": "条件判断题"
+    },
+    {
+      "id": "G2-007",
+      "chapter": "导数与微分",
+      "name": "微分定义",
+      "type": "微分基础",
+      "prerequisite": [
+        "导数定义"
+      ],
+      "explanation_goal": "能用自己的话说明「微分定义」解决什么问题，并能指出适用条件。",
+      "common_mistakes": [
+        "只记住「微分定义」的公式或名称，没有说明条件。",
+        "跳过题目对象和适用范围，直接套步骤。"
+      ],
+      "recommended_resources": [
+        "学习讲义",
+        "练习题",
+        "动画预览",
+        "PPT 课件"
+      ],
+      "suitable_animation": false,
+      "suitable_quiz_type": "概念辨析题"
+    },
+    {
+      "id": "G3-001",
+      "chapter": "微分中值定理与导数应用",
+      "name": "罗尔定理",
+      "type": "理论工具",
+      "prerequisite": [
+        "导数定义",
+        "函数连续"
+      ],
+      "explanation_goal": "能用自己的话说明「罗尔定理」解决什么问题，并能指出适用条件。",
+      "common_mistakes": [
+        "只记住「罗尔定理」的公式或名称，没有说明条件。",
+        "跳过题目对象和适用范围，直接套步骤。"
+      ],
+      "recommended_resources": [
+        "学习讲义",
+        "练习题",
+        "动画预览",
+        "PPT 课件"
+      ],
+      "suitable_animation": false,
+      "suitable_quiz_type": "条件判断题"
+    },
+    {
+      "id": "G3-002",
+      "chapter": "微分中值定理与导数应用",
+      "name": "拉格朗日中值定理",
+      "type": "理论工具",
+      "prerequisite": [
+        "罗尔定理"
+      ],
+      "explanation_goal": "能用自己的话说明「拉格朗日中值定理」解决什么问题，并能指出适用条件。",
+      "common_mistakes": [
+        "只记住「拉格朗日中值定理」的公式或名称，没有说明条件。",
+        "跳过题目对象和适用范围，直接套步骤。"
+      ],
+      "recommended_resources": [
+        "学习讲义",
+        "练习题",
+        "动画预览",
+        "PPT 课件"
+      ],
+      "suitable_animation": false,
+      "suitable_quiz_type": "条件判断题"
+    },
+    {
+      "id": "G3-003",
+      "chapter": "微分中值定理与导数应用",
+      "name": "洛必达法则",
+      "type": "极限方法",
+      "prerequisite": [
+        "导数定义",
+        "函数极限"
+      ],
+      "explanation_goal": "能用自己的话说明「洛必达法则」解决什么问题，并能指出适用条件。",
+      "common_mistakes": [
+        "只记住「洛必达法则」的公式或名称，没有说明条件。",
+        "跳过题目对象和适用范围，直接套步骤。"
+      ],
+      "recommended_resources": [
+        "学习讲义",
+        "练习题",
+        "动画预览",
+        "PPT 课件"
+      ],
+      "suitable_animation": true,
+      "suitable_quiz_type": "条件判断题"
+    },
+    {
+      "id": "G3-004",
+      "chapter": "微分中值定理与导数应用",
+      "name": "函数单调性判定",
+      "type": "导数应用",
+      "prerequisite": [
+        "导数定义"
+      ],
+      "explanation_goal": "能用自己的话说明「函数单调性判定」解决什么问题，并能指出适用条件。",
+      "common_mistakes": [
+        "只记住「函数单调性判定」的公式或名称，没有说明条件。",
+        "跳过题目对象和适用范围，直接套步骤。"
+      ],
+      "recommended_resources": [
+        "学习讲义",
+        "练习题",
+        "动画预览",
+        "PPT 课件"
+      ],
+      "suitable_animation": false,
+      "suitable_quiz_type": "条件判断题"
+    },
+    {
+      "id": "G3-005",
+      "chapter": "微分中值定理与导数应用",
+      "name": "极值与最值",
+      "type": "导数应用",
+      "prerequisite": [
+        "函数单调性判定"
+      ],
+      "explanation_goal": "能用自己的话说明「极值与最值」解决什么问题，并能指出适用条件。",
+      "common_mistakes": [
+        "只记住「极值与最值」的公式或名称，没有说明条件。",
+        "跳过题目对象和适用范围，直接套步骤。"
+      ],
+      "recommended_resources": [
+        "学习讲义",
+        "练习题",
+        "动画预览",
+        "PPT 课件"
+      ],
+      "suitable_animation": false,
+      "suitable_quiz_type": "条件判断题"
+    },
+    {
+      "id": "G3-006",
+      "chapter": "微分中值定理与导数应用",
+      "name": "凹凸性与拐点",
+      "type": "导数应用",
+      "prerequisite": [
+        "高阶导数"
+      ],
+      "explanation_goal": "能用自己的话说明「凹凸性与拐点」解决什么问题，并能指出适用条件。",
+      "common_mistakes": [
+        "只记住「凹凸性与拐点」的公式或名称，没有说明条件。",
+        "跳过题目对象和适用范围，直接套步骤。"
+      ],
+      "recommended_resources": [
+        "学习讲义",
+        "练习题",
+        "动画预览",
+        "PPT 课件"
+      ],
+      "suitable_animation": false,
+      "suitable_quiz_type": "条件判断题"
+    },
+    {
+      "id": "G4-001",
+      "chapter": "不定积分",
+      "name": "原函数",
+      "type": "积分基础",
+      "prerequisite": [
+        "导数定义"
+      ],
+      "explanation_goal": "能用自己的话说明「原函数」解决什么问题，并能指出适用条件。",
+      "common_mistakes": [
+        "只记住「原函数」的公式或名称，没有说明条件。",
+        "跳过题目对象和适用范围，直接套步骤。"
+      ],
+      "recommended_resources": [
+        "学习讲义",
+        "练习题",
+        "动画预览",
+        "PPT 课件"
+      ],
+      "suitable_animation": true,
+      "suitable_quiz_type": "概念辨析题"
+    },
+    {
+      "id": "G4-002",
+      "chapter": "不定积分",
+      "name": "不定积分定义",
+      "type": "积分基础",
+      "prerequisite": [
+        "原函数"
+      ],
+      "explanation_goal": "能用自己的话说明「不定积分定义」解决什么问题，并能指出适用条件。",
+      "common_mistakes": [
+        "只记住「不定积分定义」的公式或名称，没有说明条件。",
+        "跳过题目对象和适用范围，直接套步骤。"
+      ],
+      "recommended_resources": [
+        "学习讲义",
+        "练习题",
+        "动画预览",
+        "PPT 课件"
+      ],
+      "suitable_animation": true,
+      "suitable_quiz_type": "概念辨析题"
+    },
+    {
+      "id": "G4-003",
+      "chapter": "不定积分",
+      "name": "基本积分公式",
+      "type": "计算方法",
+      "prerequisite": [
+        "不定积分定义"
+      ],
+      "explanation_goal": "能用自己的话说明「基本积分公式」解决什么问题，并能指出适用条件。",
+      "common_mistakes": [
+        "只记住「基本积分公式」的公式或名称，没有说明条件。",
+        "跳过题目对象和适用范围，直接套步骤。"
+      ],
+      "recommended_resources": [
+        "学习讲义",
+        "练习题",
+        "动画预览",
+        "PPT 课件"
+      ],
+      "suitable_animation": false,
+      "suitable_quiz_type": "步骤计算题"
+    },
+    {
+      "id": "G4-004",
+      "chapter": "不定积分",
+      "name": "第一类换元积分法",
+      "type": "计算方法",
+      "prerequisite": [
+        "基本积分公式"
+      ],
+      "explanation_goal": "能用自己的话说明「第一类换元积分法」解决什么问题，并能指出适用条件。",
+      "common_mistakes": [
+        "只记住「第一类换元积分法」的公式或名称，没有说明条件。",
+        "跳过题目对象和适用范围，直接套步骤。"
+      ],
+      "recommended_resources": [
+        "学习讲义",
+        "练习题",
+        "动画预览",
+        "PPT 课件"
+      ],
+      "suitable_animation": false,
+      "suitable_quiz_type": "步骤计算题"
+    },
+    {
+      "id": "G4-005",
+      "chapter": "不定积分",
+      "name": "分部积分法",
+      "type": "计算方法",
+      "prerequisite": [
+        "基本积分公式"
+      ],
+      "explanation_goal": "能用自己的话说明「分部积分法」解决什么问题，并能指出适用条件。",
+      "common_mistakes": [
+        "只记住「分部积分法」的公式或名称，没有说明条件。",
+        "跳过题目对象和适用范围，直接套步骤。"
+      ],
+      "recommended_resources": [
+        "学习讲义",
+        "练习题",
+        "动画预览",
+        "PPT 课件"
+      ],
+      "suitable_animation": false,
+      "suitable_quiz_type": "步骤计算题"
+    },
+    {
+      "id": "G5-001",
+      "chapter": "定积分",
+      "name": "定积分定义",
+      "type": "积分基础",
+      "prerequisite": [
+        "函数极限"
+      ],
+      "explanation_goal": "能用自己的话说明「定积分定义」解决什么问题，并能指出适用条件。",
+      "common_mistakes": [
+        "只记住「定积分定义」的公式或名称，没有说明条件。",
+        "跳过题目对象和适用范围，直接套步骤。"
+      ],
+      "recommended_resources": [
+        "学习讲义",
+        "练习题",
+        "动画预览",
+        "PPT 课件"
+      ],
+      "suitable_animation": true,
+      "suitable_quiz_type": "概念辨析题"
+    },
+    {
+      "id": "G5-002",
+      "chapter": "定积分",
+      "name": "定积分几何意义",
+      "type": "直观理解",
+      "prerequisite": [
+        "定积分定义"
+      ],
+      "explanation_goal": "能用自己的话说明「定积分几何意义」解决什么问题，并能指出适用条件。",
+      "common_mistakes": [
+        "只记住「定积分几何意义」的公式或名称，没有说明条件。",
+        "跳过题目对象和适用范围，直接套步骤。"
+      ],
+      "recommended_resources": [
+        "学习讲义",
+        "练习题",
+        "动画预览",
+        "PPT 课件"
+      ],
+      "suitable_animation": true,
+      "suitable_quiz_type": "条件判断题"
+    },
+    {
+      "id": "G5-003",
+      "chapter": "定积分",
+      "name": "微积分基本公式",
+      "type": "积分核心",
+      "prerequisite": [
+        "定积分定义",
+        "原函数"
+      ],
+      "explanation_goal": "能用自己的话说明「微积分基本公式」解决什么问题，并能指出适用条件。",
+      "common_mistakes": [
+        "只记住「微积分基本公式」的公式或名称，没有说明条件。",
+        "跳过题目对象和适用范围，直接套步骤。"
+      ],
+      "recommended_resources": [
+        "学习讲义",
+        "练习题",
+        "动画预览",
+        "PPT 课件"
+      ],
+      "suitable_animation": false,
+      "suitable_quiz_type": "步骤计算题"
+    },
+    {
+      "id": "G5-004",
+      "chapter": "定积分",
+      "name": "定积分换元法",
+      "type": "计算方法",
+      "prerequisite": [
+        "微积分基本公式"
+      ],
+      "explanation_goal": "能用自己的话说明「定积分换元法」解决什么问题，并能指出适用条件。",
+      "common_mistakes": [
+        "只记住「定积分换元法」的公式或名称，没有说明条件。",
+        "跳过题目对象和适用范围，直接套步骤。"
+      ],
+      "recommended_resources": [
+        "学习讲义",
+        "练习题",
+        "动画预览",
+        "PPT 课件"
+      ],
+      "suitable_animation": false,
+      "suitable_quiz_type": "条件判断题"
+    },
+    {
+      "id": "G5-005",
+      "chapter": "定积分",
+      "name": "定积分分部积分法",
+      "type": "计算方法",
+      "prerequisite": [
+        "分部积分法"
+      ],
+      "explanation_goal": "能用自己的话说明「定积分分部积分法」解决什么问题，并能指出适用条件。",
+      "common_mistakes": [
+        "只记住「定积分分部积分法」的公式或名称，没有说明条件。",
+        "跳过题目对象和适用范围，直接套步骤。"
+      ],
+      "recommended_resources": [
+        "学习讲义",
+        "练习题",
+        "动画预览",
+        "PPT 课件"
+      ],
+      "suitable_animation": false,
+      "suitable_quiz_type": "步骤计算题"
+    },
+    {
+      "id": "G6-001",
+      "chapter": "定积分应用",
+      "name": "平面图形面积",
+      "type": "应用",
+      "prerequisite": [
+        "定积分几何意义"
+      ],
+      "explanation_goal": "能用自己的话说明「平面图形面积」解决什么问题，并能指出适用条件。",
+      "common_mistakes": [
+        "只记住「平面图形面积」的公式或名称，没有说明条件。",
+        "跳过题目对象和适用范围，直接套步骤。"
+      ],
+      "recommended_resources": [
+        "学习讲义",
+        "练习题",
+        "动画预览",
+        "PPT 课件"
+      ],
+      "suitable_animation": false,
+      "suitable_quiz_type": "应用建模题"
+    },
+    {
+      "id": "G6-002",
+      "chapter": "定积分应用",
+      "name": "旋转体体积",
+      "type": "应用",
+      "prerequisite": [
+        "定积分定义"
+      ],
+      "explanation_goal": "能用自己的话说明「旋转体体积」解决什么问题，并能指出适用条件。",
+      "common_mistakes": [
+        "只记住「旋转体体积」的公式或名称，没有说明条件。",
+        "跳过题目对象和适用范围，直接套步骤。"
+      ],
+      "recommended_resources": [
+        "学习讲义",
+        "练习题",
+        "动画预览",
+        "PPT 课件"
+      ],
+      "suitable_animation": false,
+      "suitable_quiz_type": "应用建模题"
+    },
+    {
+      "id": "G6-003",
+      "chapter": "定积分应用",
+      "name": "变力做功",
+      "type": "应用",
+      "prerequisite": [
+        "定积分定义"
+      ],
+      "explanation_goal": "能用自己的话说明「变力做功」解决什么问题，并能指出适用条件。",
+      "common_mistakes": [
+        "只记住「变力做功」的公式或名称，没有说明条件。",
+        "跳过题目对象和适用范围，直接套步骤。"
+      ],
+      "recommended_resources": [
+        "学习讲义",
+        "练习题",
+        "动画预览",
+        "PPT 课件"
+      ],
+      "suitable_animation": false,
+      "suitable_quiz_type": "应用建模题"
+    },
+    {
+      "id": "G7-001",
+      "chapter": "微分方程",
+      "name": "微分方程概念",
+      "type": "方程基础",
+      "prerequisite": [
+        "导数定义"
+      ],
+      "explanation_goal": "能用自己的话说明「微分方程概念」解决什么问题，并能指出适用条件。",
+      "common_mistakes": [
+        "只记住「微分方程概念」的公式或名称，没有说明条件。",
+        "跳过题目对象和适用范围，直接套步骤。"
+      ],
+      "recommended_resources": [
+        "学习讲义",
+        "学习路径",
+        "动画预览",
+        "练习题"
+      ],
+      "suitable_animation": true,
+      "suitable_quiz_type": "概念辨析题"
+    },
+    {
+      "id": "G7-002",
+      "chapter": "微分方程",
+      "name": "通解与特解",
+      "type": "方程基础",
+      "prerequisite": [
+        "微分方程概念"
+      ],
+      "explanation_goal": "能用自己的话说明「通解与特解」解决什么问题，并能指出适用条件。",
+      "common_mistakes": [
+        "只记住「通解与特解」的公式或名称，没有说明条件。",
+        "跳过题目对象和适用范围，直接套步骤。"
+      ],
+      "recommended_resources": [
+        "学习讲义",
+        "学习路径",
+        "动画预览",
+        "练习题"
+      ],
+      "suitable_animation": true,
+      "suitable_quiz_type": "概念辨析题"
+    },
+    {
+      "id": "G7-003",
+      "chapter": "微分方程",
+      "name": "可分离变量微分方程",
+      "type": "求解方法",
+      "prerequisite": [
+        "通解与特解"
+      ],
+      "explanation_goal": "能用自己的话说明「可分离变量微分方程」解决什么问题，并能指出适用条件。",
+      "common_mistakes": [
+        "只记住「可分离变量微分方程」的公式或名称，没有说明条件。",
+        "跳过题目对象和适用范围，直接套步骤。"
+      ],
+      "recommended_resources": [
+        "学习讲义",
+        "学习路径",
+        "动画预览",
+        "练习题"
+      ],
+      "suitable_animation": false,
+      "suitable_quiz_type": "步骤计算题"
+    },
+    {
+      "id": "G7-004",
+      "chapter": "微分方程",
+      "name": "一阶线性微分方程",
+      "type": "求解方法",
+      "prerequisite": [
+        "可分离变量微分方程"
+      ],
+      "explanation_goal": "能用自己的话说明「一阶线性微分方程」解决什么问题，并能指出适用条件。",
+      "common_mistakes": [
+        "只记住「一阶线性微分方程」的公式或名称，没有说明条件。",
+        "跳过题目对象和适用范围，直接套步骤。"
+      ],
+      "recommended_resources": [
+        "学习讲义",
+        "学习路径",
+        "动画预览",
+        "练习题"
+      ],
+      "suitable_animation": true,
+      "suitable_quiz_type": "步骤计算题"
+    }
+  ]
+}

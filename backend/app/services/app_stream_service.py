@@ -15,6 +15,7 @@ from app.api.learning_sessions import add_message, get_or_create_session
 from app.models.student_profile import StudentProfile
 from app.models.user import User
 from app.services.llm_provider import get_llm_provider
+from app.services.llm_provider import model_status
 from app.services.content_safety_service import evaluate_content_safety
 from app.services.grounding_service import evaluate_grounding
 from app.services.qa_service import prepare_stream_answer
@@ -55,6 +56,8 @@ def stream_workspace_question(*, body: Any, user: User, session: Session) -> Str
         "citations": prep.get("citations", []),
         "provider": provider.provider,
         "model": provider.model,
+        "model_status": model_status(provider=provider.provider, model=provider.model),
+        "rag_status": prep.get("rag_status", {}),
         "agent_traces": agent_traces,
     }
 
@@ -179,10 +182,13 @@ def _finalize_stream_answer(
         "course_name": prep.get("course_name", ""),
         "provider": provider.provider,
         "model": provider.model,
+        "model_status": model_status(provider=provider.provider, model=provider.model),
         "agent_traces": final_traces,
         "verifier_score": verify_result["verifier_score"],
+        "verification": verify_result.get("verification", {}),
         "grounding_score": grounding.get("grounding_score", 0.0),
         "grounding": grounding,
+        "rag_status": prep.get("rag_status", {}),
         "content_safety": safety,
         "student_profile": student_profile,
         "generated_artifacts": {

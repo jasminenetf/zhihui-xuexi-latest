@@ -30,6 +30,50 @@ class LLMResponse:
     fallback_reason: str = ""
 
 
+def model_status_from_response(resp: LLMResponse) -> dict[str, str | bool]:
+    return model_status(
+        provider=resp.provider,
+        model=resp.model,
+        fallback=resp.fallback,
+        fallback_from=resp.fallback_from,
+        fallback_reason=resp.fallback_reason,
+    )
+
+
+def model_status(
+    *,
+    provider: str,
+    model: str = "",
+    fallback: bool = False,
+    fallback_from: str = "",
+    fallback_reason: str = "",
+) -> dict[str, str | bool]:
+    """Return the public model status shown in the demo UI.
+
+    UI must not expose raw provider routing details; keep the label limited to
+    the three states required for judging.
+    """
+    provider = (provider or "").lower()
+    fallback_from = (fallback_from or "").lower()
+    if provider == "spark" and not fallback:
+        code = "spark_real"
+        label = "Spark 真实生成"
+    elif fallback or fallback_from == "spark":
+        code = "spark_local_fallback"
+        label = "Spark 失败后本地兜底"
+    else:
+        code = "local_demo_template"
+        label = "本地演示模板生成"
+    return {
+        "code": code,
+        "label": label,
+        "is_real_spark": code == "spark_real",
+        "is_local_fallback": code != "spark_real",
+        "reason": fallback_reason[:120] if fallback_reason else "",
+        "model_hint": model if code == "spark_real" else "",
+    }
+
+
 class BaseLLMProvider:
     provider: str = "base"
     model: str = "base"
@@ -216,7 +260,11 @@ class FallbackProvider(BaseLLMProvider):
         # Ultimate fallback: mock
         logger.warning("LLM: all providers failed, using mock")
         mock = MockLLMProvider()
-        return mock.generate(messages, temperature)
+        result = mock.generate(messages, temperature)
+        result.fallback = True
+        result.fallback_from = self._primary.provider
+        result.fallback_reason = err_msg
+        return result
 
     def stream_generate(
         self, messages: list[dict], temperature: float = 0.2
@@ -325,4 +373,8 @@ def generate_with_fallback(messages: list[dict], temperature: float = 0.2) -> LL
         # Ultimate fallback: mock
         logger.warning("LLM: all providers failed, using mock")
         mock = MockLLMProvider()
-        return mock.generate(messages, temperature)
+        result = mock.generate(messages, temperature)
+        result.fallback = True
+        result.fallback_from = primary.provider
+        result.fallback_reason = err_msg
+        return result

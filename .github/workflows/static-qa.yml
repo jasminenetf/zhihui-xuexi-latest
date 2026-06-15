@@ -60,8 +60,25 @@ jobs:
           suffixes = {".py", ".js", ".css", ".md", ".txt", ".bat", ".sh", ".yml", ".yaml", ".json", ".example"}
           patterns = [
               re.compile(r"(?i)(api[_-]?key|api[_-]?password|secret)\s*=\s*['\"]?([A-Za-z0-9_\-:]{16,})"),
-              re.compile(r"sk-[A-Za-z0-9]{20,}"),
+              re.compile(r"(?i)(spark[_-]?api[_-]?password|xfyun[_-]?(?:api[_-]?)?(?:key|secret|password)|deepseek[_-]?(?:api[_-]?)?key)\s*=\s*['\"]?([A-Za-z0-9_\-:]{16,})"),
+              re.compile(r"(?i)bearer\s+([A-Za-z0-9_\-\.]{20,})"),
+              re.compile(r"(sk-[A-Za-z0-9]{20,})"),
           ]
+          def is_false_positive_secret_value(value: str, context: str) -> bool:
+              lower = value.lower()
+              context_lower = context.lower()
+              if any(x in lower for x in ["your", "mock", "example", "placeholder", "changeme", "demo"]):
+                  return True
+              if lower.startswith("_normalize_") or "normalize" in lower:
+                  return True
+              if "settings." in context_lower or "os.getenv" in context_lower:
+                  return True
+              # Source identifiers such as helper function names are not secrets.
+              # Keep this narrow: plain long alphanumeric strings may still be real
+              # tokens, so only skip identifier-like values that contain underscores.
+              if re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", value) and "_" in value:
+                  return True
+              return False
           hits = []
           for path in root.rglob("*"):
               if not path.is_file():
@@ -76,9 +93,8 @@ jobs:
               text = path.read_text(encoding="utf-8", errors="ignore")
               for pattern in patterns:
                   for match in pattern.finditer(text):
-                      value = match.group(match.lastindex or 0)
-                      lower = value.lower()
-                      if "your" in lower or "mock" in lower or "example" in lower:
+                      value = match.group(2) if (match.lastindex or 0) >= 2 else match.group(1)
+                      if is_false_positive_secret_value(value, match.group(0)):
                           continue
                       hits.append(f"{rel}: {match.group(0)[:80]}")
           if hits:
