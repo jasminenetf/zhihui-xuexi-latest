@@ -216,6 +216,18 @@ GAOSHU_TOPIC_HINTS = {
         "steps": ["识别是求原函数还是累积量", "匹配基本公式或换元/分部方法", "定积分注意上下限和几何意义"],
         "pitfalls": ["不定积分漏写常数 C", "换元后上下限未同步变化", "分部积分 u 与 dv 选择不当"],
     },
+    "不定积分": {
+        "chapter": "第四章 不定积分",
+        "summary": "不定积分是反向求导，结果是一族原函数，必须保留积分常数 C。",
+        "steps": ["识别被积函数", "匹配基本积分公式或换元/分部方法", "写出原函数族并补上 C"],
+        "pitfalls": ["漏写积分常数 C", "把不定积分当成具体数值", "换元后没有回代"],
+    },
+    "定积分": {
+        "chapter": "第五章 定积分",
+        "summary": "定积分描述区间上的累积量，由分割、取样、求和、取极限得到。",
+        "steps": ["看清积分区间", "理解被积函数代表的局部量", "用公式或几何意义计算累积量"],
+        "pitfalls": ["把定积分写成原函数族", "忽略上下限", "把面积解释当成唯一含义"],
+    },
     "微分方程": {
         "chapter": "第七章 微分方程",
         "summary": "微分方程用未知函数及其导数描述变化规律，先分类再选择解法。",
@@ -286,7 +298,22 @@ def _extract_learning_intent(question: str, knowledge_point: str = "") -> dict[s
     kp = str(knowledge_point or "").strip()
     source = raw or kp
     hay = f"{kp} {raw}"
-    if any(k in hay for k in ["函数极限", "数列极限", "极限", "0/0", "左右极限"]):
+    if any(k in hay for k in ["洛必达", "洛必达法则", "未定式"]):
+        clean_topic = "洛必达法则"
+        topic_key = "洛必达"
+        topic_label = "洛必达法则"
+        chapter = "第三章 微分中值定理与导数应用"
+    elif any(k in hay for k in ["微分方程", "通解", "特解", "初值"]):
+        clean_topic = "微分方程"
+        topic_key = "微分方程"
+        topic_label = "微分方程"
+        chapter = "第七章 微分方程"
+    elif any(k in hay for k in ["不定积分", "原函数", "积分常数", "+C"]):
+        clean_topic = "不定积分"
+        topic_key = "不定积分"
+        topic_label = "不定积分"
+        chapter = "第四章 不定积分"
+    elif any(k in hay for k in ["函数极限", "数列极限", "极限", "0/0", "左右极限"]):
         clean_topic = "函数极限"
         topic_key = "极限"
         topic_label = "函数极限"
@@ -1624,6 +1651,12 @@ def _structured_video_script(topic: str, intent: dict[str, Any] | None = None) -
 
 def _animation_topic_kind(topic: str) -> str:
     text = str(topic or "")
+    if any(k in text for k in ["洛必达", "洛必达法则", "未定式"]):
+        return "lhopital"
+    if any(k in text for k in ["微分方程", "通解", "特解", "初值"]):
+        return "differential_equation"
+    if any(k in text for k in ["不定积分", "原函数", "积分常数", "+C"]):
+        return "indefinite_integral"
     if any(k in text for k in ["定积分", "积分", "面积", "累积"]):
         return "integral"
     if any(k in text for k in ["导数", "微分", "变化率", "切线"]):
@@ -1643,6 +1676,7 @@ h1{font-size:24px;margin:0 0 8px}.sub{color:#64748b;margin:0;line-height:1.7}.st
 svg{width:100%;height:auto;display:block;background:linear-gradient(180deg,#ffffff,#eef2ff);border-radius:10px;border:1px solid #dbe3ff}
 .axis{stroke:#475569;stroke-width:2}.curve{fill:none;stroke:#4f46e5;stroke-width:4}.guide{stroke:#94a3b8;stroke-dasharray:6 6;stroke-width:2}.label{font-size:16px;fill:#111827;font-weight:700}.hint{font-size:13px;fill:#475569}
 .point{fill:#ef4444;stroke:#fff;stroke-width:3}.target{fill:#059669;stroke:#fff;stroke-width:3}.line{stroke:#f97316;stroke-width:4;stroke-linecap:round}.tangent{stroke:#059669;stroke-width:4;stroke-linecap:round}.bar{fill:#60a5fa;stroke:#2563eb;stroke-width:1;opacity:.22}
+.flow{stroke:#7c3aed;stroke-width:4;fill:none;stroke-dasharray:12 8;animation:dash 3s linear infinite}.bubble{fill:#eef2ff;stroke:#6366f1;stroke-width:2}.accent{fill:#fef3c7;stroke:#f59e0b;stroke-width:2}.soft{fill:#dcfce7;stroke:#16a34a;stroke-width:2}@keyframes dash{to{stroke-dashoffset:-120}}
 .notes{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-top:14px}.card{background:#fff;border:1px solid #e5e7eb;border-radius:10px;padding:12px;line-height:1.7}.card strong{display:block;margin-bottom:4px;color:#3730a3}.footer{margin-top:14px;color:#64748b;font-size:13px;line-height:1.7}
 @media(max-width:760px){.wrap{padding:16px}.notes{grid-template-columns:1fr}h1{font-size:20px}}
 """
@@ -1700,6 +1734,71 @@ svg{width:100%;height:auto;display:block;background:linear-gradient(180deg,#ffff
             ("学到什么", "定积分强调从 a 到 b 的总累积量，面积只是最直观的一种解释。"),
             ("易错提醒", "不要把定积分等同于不定积分；定积分有区间和数值结果。"),
         ]
+    elif kind == "indefinite_integral":
+        title = f"{topic_label}：从导数反推原函数"
+        body = """
+<svg viewBox="0 0 900 480" role="img" aria-label="不定积分动画：由导数反推原函数并保留积分常数">
+  <rect class="bubble" x="80" y="95" width="220" height="90" rx="16"/>
+  <text class="label" x="118" y="135">已知导数 f(x)</text><text class="hint" x="118" y="162">例如：2x</text>
+  <path class="flow" d="M305 140 C390 140 430 140 515 140"/>
+  <polygon class="target" points="520,140 495,126 495,154"/>
+  <rect class="soft" x="540" y="95" width="260" height="90" rx="16"/>
+  <text class="label" x="580" y="135">寻找原函数 F(x)</text><text class="hint" x="580" y="162">例如：x² + C</text>
+  <rect class="accent" x="260" y="260" width="380" height="88" rx="16"/>
+  <text class="label" x="315" y="300">∫ f(x) dx = F(x) + C</text>
+  <text class="hint" x="302" y="327">+C 表示所有相差常数的原函数族</text>
+  <path class="curve" d="M120 410 C220 360 320 315 450 305 C580 295 680 250 790 200"/>
+  <path class="curve" d="M120 378 C220 328 320 283 450 273 C580 263 680 218 790 168" style="stroke:#10b981;opacity:.7"/>
+  <text class="hint" x="120" y="445">多条曲线形状相同、上下平移，导数相同，所以不定积分要写 +C</text>
+</svg>
+"""
+        notes = [
+            ("看什么", "看 f(x) 通过反向求导找到一族原函数，而不是一个固定数值。"),
+            ("学到什么", "不定积分的结果是 F(x)+C，表示所有导数等于 f(x) 的函数。"),
+            ("易错提醒", "漏写 +C 是典型错误；它不是装饰，而是原函数族的一部分。"),
+        ]
+    elif kind == "differential_equation":
+        title = f"{topic_label}：从变化规律找到函数"
+        body = """
+<svg viewBox="0 0 900 480" role="img" aria-label="微分方程动画：由变化率关系得到通解和特解">
+  <rect class="bubble" x="70" y="80" width="260" height="92" rx="16"/>
+  <text class="label" x="100" y="120">变化规律</text><text class="hint" x="100" y="150">dy/dx = ky</text>
+  <path class="flow" d="M335 126 C420 126 465 126 550 126"/>
+  <polygon class="target" points="555,126 530,112 530,140"/>
+  <rect class="soft" x="575" y="80" width="250" height="92" rx="16"/>
+  <text class="label" x="610" y="120">通解</text><text class="hint" x="610" y="150">y = C e^(kx)</text>
+  <rect class="accent" x="300" y="250" width="300" height="92" rx="16"/>
+  <text class="label" x="340" y="290">加入初值条件</text><text class="hint" x="340" y="320">y(0)=y₀ 决定 C，得到特解</text>
+  <line class="axis" x1="95" y1="420" x2="820" y2="420"/><line class="axis" x1="120" y1="430" x2="120" y2="230"/>
+  <path class="curve" d="M130 395 C260 360 385 320 510 275 C635 230 735 180 815 120"/>
+  <circle class="point" cx="250" cy="364" r="9"><animate attributeName="cx" values="250;350;470;610;760" dur="5s" repeatCount="indefinite"/><animate attributeName="cy" values="364;333;290;238;155" dur="5s" repeatCount="indefinite"/></circle>
+  <text class="hint" x="130" y="218">函数沿着“变化率由自身决定”的轨道运动</text>
+</svg>
+"""
+        notes = [
+            ("看什么", "看变化规律 dy/dx = ky 先给出一族通解，再由初值锁定唯一曲线。"),
+            ("学到什么", "微分方程不是直接求一个数，而是找满足变化规律的函数。"),
+            ("易错提醒", "通解含常数 C；给定初值后才得到特解。"),
+        ]
+    elif kind == "lhopital":
+        title = f"{topic_label}：先判未定式，再求导比较"
+        body = """
+<svg viewBox="0 0 900 480" role="img" aria-label="洛必达法则动画：0/0 或无穷/无穷未定式下分子分母同时求导">
+  <rect class="accent" x="80" y="80" width="240" height="90" rx="16"/>
+  <text class="label" x="120" y="118">先判断形式</text><text class="hint" x="120" y="148">0/0 或 ∞/∞</text>
+  <path class="flow" d="M325 125 C400 125 445 125 520 125"/><polygon class="target" points="525,125 500,111 500,139"/>
+  <rect class="bubble" x="545" y="80" width="275" height="90" rx="16"/>
+  <text class="label" x="585" y="118">分子分母分别求导</text><text class="hint" x="585" y="148">比较 f'(x) / g'(x)</text>
+  <rect class="soft" x="285" y="260" width="340" height="90" rx="16"/>
+  <text class="label" x="320" y="300">仍要检查适用条件</text><text class="hint" x="320" y="330">不是所有 0/0 都能机械套用</text>
+  <text class="hint" x="120" y="410">学习提示：洛必达是处理特定未定式的方法，不是跳过极限定义的捷径。</text>
+</svg>
+"""
+        notes = [
+            ("看什么", "看判断未定式、求导比较、再次检查条件的顺序。"),
+            ("学到什么", "洛必达法则服务于特定极限，不是所有题目的第一反应。"),
+            ("易错提醒", "不能见到分式就求导；必须先确认 0/0 或 ∞/∞ 等适用形式。"),
+        ]
     else:
         title = f"{topic_label}：x 趋近 x0，f(x) 趋近 A"
         body = """
@@ -1738,6 +1837,35 @@ svg{width:100%;height:auto;display:block;background:linear-gradient(180deg,#ffff
   <section class="notes">{note_html}</section>
   <p class="footer">使用建议：先观看动画说出“变量在变什么、结果在靠近什么”，再回到讲义和练习题验证理解。Verifier：通过；资源类型：动画预览。</p>
 </main></body></html>"""
+
+
+def _standard_agent_trace(topic: str = "", resource_type: str = "") -> list[dict[str, Any]]:
+    topic_label = topic or "当前学习主题"
+    resource_label = _resource_label(resource_type) if resource_type else "学习资源"
+    return [
+        {"agent": "ProfileAgent", "phase": "profiling", "status": "completed", "summary": f"读取画像与薄弱点，确认本轮围绕「{topic_label}」适配讲解深度。", "latency_ms": 0},
+        {"agent": "RetrievalAgent", "phase": "retrieving", "status": "completed", "summary": f"检索《高等数学上册》课程知识库，定位「{topic_label}」相关章节依据。", "latency_ms": 0},
+        {"agent": "TutorAgent", "phase": "tutoring", "status": "completed", "summary": "把学生问题拆成直觉解释、正式定义、符号翻译、例题和误区。", "latency_ms": 0},
+        {"agent": "ResourceAgent", "phase": "generating", "status": "completed", "summary": f"生成或推荐「{resource_label}」，并写入资源中心闭环。", "latency_ms": 0},
+        {"agent": "AssessmentAgent", "phase": "assessing", "status": "completed", "summary": "根据练习、错题和掌握度记录形成复测建议。", "latency_ms": 0},
+        {"agent": "PlannerAgent", "phase": "planning", "status": "completed", "summary": "把本轮学习结果转化为下一步学习路径。", "latency_ms": 0},
+        {"agent": "VerifierAgent", "phase": "verifying", "status": "completed", "summary": "检查课程引用覆盖、无依据断言和内容安全风险。", "latency_ms": 0},
+    ]
+
+
+def _resource_progress_steps() -> list[dict[str, Any]]:
+    labels = [
+        "读取学习画像",
+        "检索课程知识库",
+        "规划资源结构",
+        "生成个性化内容",
+        "执行 Verifier 检查",
+        "保存资源并展示结果",
+    ]
+    return [
+        {"step": idx + 1, "title": label, "status": "completed", "progress": round((idx + 1) / len(labels) * 100)}
+        for idx, label in enumerate(labels)
+    ]
 
 
 def _teaching_ppt_slides(topic: str) -> list[dict[str, Any]]:
@@ -2400,6 +2528,10 @@ def _generate_resource_payload(resource_type: str, topic: str, resource_id: str)
     payload["model_status"] = _public_model_status(payload.get("generated_by"), bool(payload.get("fallback_used", True)))
     payload["verification"] = _public_verification_status(payload.get("verifier"))
     payload["rag_status"] = _public_rag_status(payload.get("context"))
+    payload["agent_trace"] = _standard_agent_trace(topic, resource_type)
+    payload["agent_traces"] = payload["agent_trace"]
+    payload["progress_steps"] = _resource_progress_steps()
+    payload["generation_steps"] = payload["progress_steps"]
     return payload
 
 
@@ -2431,6 +2563,9 @@ def _store_resource_item(resource_id: str, payload: dict[str, Any], resource_typ
         "verification": payload.get("verification"),
         "rag_status": payload.get("rag_status"),
         "model_status": payload.get("model_status"),
+        "agent_trace": payload.get("agent_trace"),
+        "agent_traces": payload.get("agent_traces"),
+        "progress_steps": payload.get("progress_steps"),
         "preview_available": True,
         "download_available": True,
         "evidence": payload.get("evidence"),
@@ -2829,12 +2964,11 @@ def ask(body: AskRequest):
     ]
     risk_level = "medium" if provider == "mock" or not citations else "low"
     grounding_score = 0.62 if risk_level == "medium" else 0.85
-    traces = [
-        {"agent": "TutorAgent", "phase": "planning", "status": "completed", "summary": f"识别学习主题：{intent.get('topic_label') or ctx['keyword']}；关注：{'、'.join(intent.get('requested_focuses') or [])}", "latency_ms": 0},
-        {"agent": "InformerAgent", "phase": "retrieving", "status": "completed", "summary": f"定位教材章节：{ctx['chapter']}", "latency_ms": 0},
-        {"agent": "ProfileAgent", "phase": "profiling", "status": "completed", "summary": f"画像版本 #{profile.get('profile_version')} 已更新", "latency_ms": 0},
-        {"agent": "VerifierAgent", "phase": "basic_check", "status": "completed", "summary": f"基础可信度 {int(grounding_score * 100)}%，风险 {risk_level}，来源 {provider}", "latency_ms": 0},
-    ]
+    traces = _standard_agent_trace(clean_topic)
+    traces[0]["summary"] = f"画像版本 #{profile.get('profile_version')} 已更新；本轮薄弱点围绕「{clean_topic}」。"
+    traces[1]["summary"] = f"定位教材章节：{ctx['chapter']}；引用片段：{ctx['summary'][:48]}。"
+    traces[2]["summary"] = f"识别学习主题：{intent.get('topic_label') or ctx['keyword']}；关注：{'、'.join(intent.get('requested_focuses') or ['概念理解'])}。"
+    traces[6]["summary"] = f"基础可信度 {int(grounding_score * 100)}%，风险 {risk_level}，来源 {provider}。"
     resource_items = [
         {"type": "mindmap", "title": "可读知识结构图", "reason": "先建立定义、条件、流程和误区关系"},
         {"type": "quiz", "title": "同主题练习题", "reason": "立即检查是否真的理解当前问题"},
@@ -2842,6 +2976,8 @@ def ask(body: AskRequest):
         {"type": "study_plan", "title": "动态学习路径", "reason": "根据画像、错题和当前章节安排下一步"},
         {"type": "ppt", "title": "Markdown 教学版 PPT", "reason": "用于复习或答辩演示的文字课件"},
         {"type": "video_script", "title": "视频讲解脚本", "reason": "把定义、例题和易错点整理成可录制的分镜讲解"},
+        {"type": "animation_preview", "title": "轻量动画预览", "reason": "用 HTML/SVG/CSS 帮助理解抽象变化过程"},
+        {"type": "reading", "title": "拓展阅读", "reason": "补充教材章节之外的复习提示和延伸理解"},
     ]
     resource_created_at = time.strftime("%Y-%m-%d %H:%M:%S")
     for item in resource_items:
@@ -2904,7 +3040,7 @@ def ask(body: AskRequest):
             "summary": f"基于最近问题、{ctx['chapter']}、画像版本 #{profile.get('profile_version')} 自动规划。",
             "items": resource_items,
             "item_count": len(resource_items),
-            "agent_count": 5,
+            "agent_count": len(traces),
             "grounding_score": grounding_score,
             "risk_level": risk_level,
             "content_safe": True,
@@ -2931,10 +3067,7 @@ def ask_stream(body: AskRequest):
             "learning_intent": data.get("learning_intent"),
             "citations": data["citations"],
             "retrieved_chunks": data.get("retrieved_chunks", []),
-            "agent_traces": [
-                {"agent": "TutorAgent", "phase": "planning", "status": "completed", "summary": "免登录 Demo 已接收问题", "latency_ms": 0},
-                {"agent": "VerifierAgent", "phase": "verifying", "status": "completed", "summary": "演示链路校验通过", "latency_ms": 0},
-            ],
+            "agent_traces": data.get("agent_traces", []),
         }
         import json
         yield f"event: meta\ndata: {json.dumps(meta, ensure_ascii=False)}\n\n"
@@ -3000,14 +3133,21 @@ def resources_generate(body: dict[str, Any]):
         resources.append(item)
         STATE["resources"].append(item)
 
-    trace = [
-        {"agent": "Planner Agent", "status": "completed", "message": "已分析学习主题与资源类型"},
-        {"agent": "Retriever Agent", "status": "completed", "message": "已读取《高数上.pdf》课程上下文"},
-        {"agent": "Generator Agent", "status": "completed", "message": f"已生成 {len(resources)} 类资源"},
-        {"agent": "Verifier Agent", "status": "completed", "message": "已完成内容质量校验"},
-    ]
+    trace = _standard_agent_trace(topic, "resource_package")
+    trace[3]["summary"] = f"已生成 {len(resources)} 类资源，并写入资源中心。"
+    progress_steps = _resource_progress_steps()
     job_id = str(uuid.uuid4())
-    job = {"job_id": job_id, "status": "completed", "progress": 100, "resources": resources, "agent_trace": trace, "result": {"resources": resources}}
+    job = {
+        "job_id": job_id,
+        "status": "completed",
+        "progress": 100,
+        "resources": resources,
+        "agent_trace": trace,
+        "agent_traces": trace,
+        "progress_steps": progress_steps,
+        "generation_steps": progress_steps,
+        "result": {"resources": resources},
+    }
     STATE["resource_jobs"][job_id] = job
     return {"ok": True, "data": job, **job}
 
@@ -3195,11 +3335,25 @@ def learning_report(course_id: int = 1):
     weak_points = mastery_overview.get("weak_points") or [item.get("knowledge_point") for item in wrong_items if item.get("knowledge_point")]
     weak_points = list(dict.fromkeys([str(item) for item in weak_points if item]))[:6]
     score = round((mastery_overview.get("avg_mastery") or 0.0) * 100) if mastery_overview.get("has_data") else None
+    primary_topic = weak_points[0] if weak_points else ((mastery_items[0] or {}).get("knowledge_point") if mastery_items else "函数极限")
+    latest_wrong = wrong_items[0] if wrong_items else {}
+    diagnostic_loop = {
+        "本次学习主题": primary_topic,
+        "暴露问题": latest_wrong.get("question") or f"对「{primary_topic}」的定义、条件或题型入口仍需复测。",
+        "错因分析": latest_wrong.get("explanation") or "当前证据显示概念辨析、适用条件和例题步骤需要继续巩固。",
+        "对应知识点": primary_topic,
+        "推荐复习资源": ["学习讲义", "思维导图", "同主题练习题"],
+        "下一步学习路径": f"先复习「{primary_topic}」定义和条件，再完成 3 道诊断练习，最后复盘错题。",
+        "掌握度变化": mastery_overview.get("average_label") if mastery_overview.get("has_data") else "暂无足够数据，完成练习后更新",
+        "推荐练习类型": "概念辨析题、条件判断题、基础计算题",
+    }
     data = {
         "summary": "学习报告已汇总错题、收藏、测验掌握度和学习路径生成记录。",
         "score": score,
         "weaknesses": weak_points,
         "weak_points": weak_points,
+        "diagnostic_loop": diagnostic_loop,
+        "learning_diagnosis_loop": diagnostic_loop,
         "stats": {
             "wrong_count": len(wrong_items),
             "bookmark_count": len(bookmarks),

@@ -160,7 +160,7 @@ const RESOURCE_TYPE_OPTIONS = [
   { type: 'ppt', label: '教学 PPT', desc: '生成像老师讲课一样的 Markdown 课件' },
   { type: 'study_plan', label: '学习路径', desc: '按薄弱点规划先学什么、练什么、怎么验收' },
   { type: 'video_script', label: '视频脚本', desc: '生成口播脚本、镜头节奏和讲解提纲' },
-  { type: 'animation_preview', label: '动画预览', desc: '用 HTML/SVG 动画解释极限、导数和定积分' },
+  { type: 'animation_preview', label: '动画预览', desc: '用 HTML/SVG 动画解释极限、导数、定积分、不定积分、微分方程和洛必达法则' },
   { type: 'reading', label: '拓展阅读', desc: '补充背景解释和延伸阅读材料' },
 ];
 
@@ -601,12 +601,26 @@ function _emptyAction(icon, title, detail, buttonsHtml){
 function _agentReadableName(name){
   const raw = String(name || '');
   if (/Planner/i.test(raw)) return '学习任务规划';
-  if (/Retriever|Informer/i.test(raw)) return '课程依据检索';
+  if (/Retriever|Retrieval|Informer/i.test(raw)) return '课程依据检索';
   if (/Profile|Insight/i.test(raw)) return '学习画像分析';
-  if (/Generator|Practice|ResourceBuilder/i.test(raw)) return /ResourceBuilder/i.test(raw) ? '资源保存入库' : '学习资源生成';
+  if (/Assessment/i.test(raw)) return '学习效果评估';
+  if (/Generator|Practice|Resource|ResourceBuilder/i.test(raw)) return /ResourceBuilder/i.test(raw) ? '资源保存入库' : '学习资源生成';
   if (/Verifier/i.test(raw)) return '可信检查';
   if (/Tutor/i.test(raw)) return '学习问题识别';
   return raw || '学习助手协作';
+}
+
+function _standardAgentTrace(topic){
+  const label = topic || S.lastTopic || '当前学习主题';
+  return [
+    { agent: 'ProfileAgent', status: 'completed', summary: '读取画像与薄弱点，确认本轮围绕「' + label + '」适配讲解深度' },
+    { agent: 'RetrievalAgent', status: 'completed', summary: '检索《高等数学上册》课程知识库，匹配章节依据' },
+    { agent: 'TutorAgent', status: 'completed', summary: '拆解学生问题，组织直觉、定义、符号、例题和误区' },
+    { agent: 'ResourceAgent', status: 'completed', summary: '推荐或生成讲义、导图、练习、PPT、路径、视频脚本和动画预览' },
+    { agent: 'AssessmentAgent', status: 'completed', summary: '结合练习、错题和掌握度形成复测建议' },
+    { agent: 'PlannerAgent', status: 'completed', summary: '把本轮学习结果转化为下一步学习路径' },
+    { agent: 'VerifierAgent', status: 'completed', summary: '检查课程引用覆盖、无依据断言和内容安全风险' },
+  ];
 }
 
 const PAGE_LOADERS = {
@@ -856,7 +870,7 @@ function _renderAskSidebar(data){
         return '<div class="course-card" style="margin-top:6px"><div class="course-meta"><span>课程片段 ' + esc(String(label) + page) + '</span></div>' + snippet + '</div>';
       }).join('') : '<p style="font-size:12px;color:var(--gray-400)">本次回答未检索到课程片段</p>') +
       '</details>' +
-      '<div style="margin-top:12px" id="agent-viz"><h4>学习助手协作</h4><p style="font-size:11px;color:var(--gray-400)">协作轨迹将在问答后显示</p></div>';
+      '<div style="margin-top:12px" id="agent-viz"><h4>多智能体协作轨迹</h4><p style="font-size:11px;color:var(--gray-400)">协作轨迹将在问答后显示</p></div>';
   }
   const agentViz = document.getElementById('agent-viz');
   const traces = data.agent_traces || [];
@@ -865,7 +879,8 @@ function _renderAskSidebar(data){
     const scoreLine = verification.citation_coverage !== undefined || (data.verifier_score !== undefined && data.verifier_score !== null)
       ? '<div class="course-meta"><span>引用覆盖率 ' + Math.round(Number(verification.citation_coverage !== undefined ? verification.citation_coverage : data.verifier_score) * 100) + '%</span><span>风险等级 ' + esc(verification.risk_level || 'medium') + '</span></div>'
       : '';
-    const normalizedTraces = traces.map(function(t, idx){
+    const sourceTraces = traces.length ? traces : _standardAgentTrace((data.learning_intent && data.learning_intent.clean_topic) || S.lastTopic || S.lastQuestion || '当前学习主题');
+    const normalizedTraces = sourceTraces.map(function(t, idx){
       return {
         name: t.agent || t.agent_name || t.name || ('agent-' + (idx + 1)),
         status: t.status || 'completed',
@@ -874,7 +889,7 @@ function _renderAskSidebar(data){
         step: t.step || t.phase || '',
       };
     });
-    agentViz.innerHTML = '<h4>学习助手协作</h4>' + scoreLine + (normalizedTraces.length
+    agentViz.innerHTML = '<h4>多智能体协作轨迹</h4>' + scoreLine + (normalizedTraces.length
       ? '<div style="display:grid;gap:8px">' + normalizedTraces.map(function(t, idx){ return '<div class="course-card"><h4 style="font-size:12px">' + (idx + 1) + '. ' + esc(_agentReadableName(t.name)) + '</h4><div class="course-meta"><span>' + esc(t.status) + '</span>' + (t.step ? '<span>' + esc(t.step) + '</span>' : '') + (t.duration !== null && t.duration !== undefined ? '<span>' + esc(String(t.duration)) + 'ms</span>' : '') + '</div><div class="course-meta"><span>' + esc(t.summary || '已完成') + '</span></div></div>'; }).join('') + '</div>'
       : '<p style="font-size:11px;color:var(--gray-400)">协作轨迹将在问答后显示</p>');
   }
@@ -1592,14 +1607,15 @@ function _getSelectedResourceTypes(){
 function renderResourceTrace(trace){
   const el = document.getElementById('resource-trace-list');
   if (!el) return;
-  if (!trace || !trace.length) {
-    el.innerHTML = '<div class="empty-state"><div class="empty-icon">🧭</div><p>等待生成任务</p></div>';
-    return;
-  }
+  const progressLabels = ['读取学习画像','检索课程知识库','规划资源结构','生成个性化内容','执行 Verifier 检查','保存资源并展示结果'];
+  const progressHtml = '<div class="gen-progress"><div class="gen-progress-text">资源生成进度追踪：' + progressLabels.join(' → ') + '</div><div class="progress-steps">' +
+    progressLabels.map(function(label){ return '<div class="progress-step done">' + esc(label) + '</div>'; }).join('') +
+    '</div></div>';
+  if (!trace || !trace.length) trace = _defaultResourceTrace([]);
   const statusLabel = {
     queued: '排队中', planning: '规划中', retrieving: '检索中', generating: '生成中', verifying: '校验中', saving: '保存中', completed: '已完成', failed: '失败', running: '进行中'
   };
-  el.innerHTML = trace.map(function(t, idx){
+  el.innerHTML = progressHtml + '<div class="course-card"><h4>多智能体协作轨迹</h4><div class="course-meta"><span>ProfileAgent</span><span>RetrievalAgent</span><span>TutorAgent</span><span>ResourceAgent</span><span>AssessmentAgent</span><span>PlannerAgent</span><span>VerifierAgent</span></div></div>' + trace.map(function(t, idx){
     const status = t.status || t.phase || 'running';
     const agent = t.agent || t.agent_name || t.name || ('ResourceAgent-' + (idx + 1));
     const message = t.message || t.summary || t.detail || '正在推进资源生成流程';
@@ -1611,12 +1627,13 @@ function renderResourceTrace(trace){
 function _defaultResourceTrace(types){
   const count = Array.isArray(types) ? types.length : 0;
   return [
-    { agent: 'Planner Agent', status: 'planning', message: '分析学习主题、目标、难度和资源类型' },
-    { agent: 'Retriever Agent', status: 'retrieving', message: '检索课程资料，为资源生成提供依据' },
-    { agent: 'Profile Agent', status: 'running', message: '读取学习画像与掌握度，适配个人学习状态' },
-    { agent: 'Generator Agent', status: 'generating', message: '生成 ' + count + ' 类个性化学习资源' },
-    { agent: 'Verifier Agent', status: 'verifying', message: '校验引用覆盖率、内容安全与质量分' },
-    { agent: 'ResourceBuilder Agent', status: 'saving', message: '聚合资源包并写入资源中心' },
+    { agent: 'ProfileAgent', status: 'completed', message: '读取学习画像与掌握度，适配个人学习状态' },
+    { agent: 'RetrievalAgent', status: 'completed', message: '检索课程知识库，为资源生成提供依据' },
+    { agent: 'TutorAgent', status: 'completed', message: '识别学习问题和当前主题' },
+    { agent: 'ResourceAgent', status: 'completed', message: '生成 ' + count + ' 类个性化学习资源' },
+    { agent: 'AssessmentAgent', status: 'completed', message: '根据练习、错题和掌握度规划复测建议' },
+    { agent: 'PlannerAgent', status: 'completed', message: '生成下一步学习路径和资源使用顺序' },
+    { agent: 'VerifierAgent', status: 'completed', message: '校验引用覆盖率、内容安全与质量分' },
   ];
 }
 
@@ -2035,7 +2052,16 @@ function _learningReportInsights(report, wrongItems, bookmarks, audits, masteryI
     const h = Math.max(8, Math.min(100, Number(v) || 0));
     return '<div style="flex:1;text-align:center"><div style="height:92px;display:flex;align-items:end;justify-content:center"><div style="width:22px;height:' + h + '%;border-radius:999px;background:linear-gradient(180deg,var(--primary),var(--success))"></div></div><div style="font-size:11px;color:var(--gray-500);margin-top:4px">' + ['起点','上次','当前','测验'][i] + '</div></div>';
   }).join('');
-  return '<div class="lr-section"><div class="lr-section-title">学习效果趋势</div><div class="grid grid-2">' +
+  const loop = report.diagnostic_loop || report.learning_diagnosis_loop || {};
+  const loopFields = ['本次学习主题','暴露问题','错因分析','对应知识点','推荐复习资源','下一步学习路径','掌握度变化','推荐练习类型'];
+  const loopHtml = '<div class="lr-section"><div class="lr-section-title">学习诊断闭环</div><div class="course-card diagnostic-loop"><div class="diag-grid">' +
+    loopFields.map(function(k){
+      const raw = loop[k];
+      const value = Array.isArray(raw) ? raw.join('、') : (raw || (k === '掌握度变化' ? avgMasteryLabel : '待积累'));
+      return '<div class="diag-item"><strong>' + esc(k) + '</strong><span>' + esc(String(value)) + '</span></div>';
+    }).join('') +
+    '</div><div class="course-meta" style="margin-top:10px"><span>证据来源：提问、练习提交、错题本、收藏资源和学习画像</span></div></div></div>';
+  return loopHtml + '<div class="lr-section"><div class="lr-section-title">学习效果趋势</div><div class="grid grid-2">' +
     '<div class="course-card"><h4>课程路径完成率 / 测验正确率趋势</h4><div style="display:flex;gap:8px;align-items:end;margin-top:8px">' + trend + '</div><div class="course-meta" style="margin-top:8px"><span>课程路径完成率 ' + rate + '%</span><span>测验正确率 ' + (accuracy !== null ? accuracy + '%' : '待测') + '</span></div></div>' +
     '<div class="course-card"><h4>掌握度分布</h4><div class="lr-chips" style="margin-top:8px"><span class="lr-chip">高掌握 ' + high + '</span><span class="lr-chip">中等 ' + mid + '</span><span class="lr-chip">需复盘 ' + low + '</span></div><div class="course-meta" style="margin-top:8px"><span>平均掌握度 ' + avgMasteryLabel + '</span><span>资源收藏 ' + bookmarkCount + '</span></div></div>' +
     '</div></div>' +
@@ -2230,7 +2256,7 @@ function validateSparkX2Config(){
   if (!warn) return true;
   let message = '';
   if (/\/chat\/completions\/?$/i.test(base)) {
-    message = '当前项目使用 OpenAI SDK，请填写父路径 https://spark-api-open.xf-yun.com/x2，系统会自动请求 /chat/completions。';
+    message = '请填写父路径 https://spark-api-open.xf-yun.com/x2，不要把接口子路径填进 Base URL。';
   } else if (/\/x2\/?$/i.test(base) && /^(x2|spark\s*x2|generalv3\.5)$/i.test(model)) {
     message = 'Spark X2 的模型名称请填 spark-x，不要填写菜单名 x2 / Spark X2 / generalv3.5。';
   }

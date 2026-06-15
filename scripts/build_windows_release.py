@@ -37,6 +37,7 @@ EXCLUDE_DIRS = {
     ".cursor",
     ".local",
     "logs",
+    "reports",
 }
 EXCLUDE_SUFFIXES = {".pyc", ".pyo", ".log", ".zip", ".tar", ".gz", ".7z"}
 SECRET_PATTERNS = [
@@ -107,7 +108,7 @@ def copy_tree(src: Path, dst: Path) -> None:
 
 
 def copy_project_files() -> None:
-    for folder in ["backend", "frontend-demo", "scripts", "docs", "reports", "tests"]:
+    for folder in ["backend", "frontend-demo", "scripts", "docs", "tests", "knowledge_base"]:
         src = ROOT / folder
         if src.exists():
             copy_tree(src, BUILD_DIR / folder)
@@ -186,7 +187,7 @@ def main() -> int:
     else:
         print("Working tree: clean")
 
-    scan_roots = [ROOT / "backend", ROOT / "frontend-demo", ROOT / "scripts", ROOT / "docs", ROOT / "reports", ROOT / "release"]
+    scan_roots = [ROOT / "backend", ROOT / "frontend-demo", ROOT / "scripts", ROOT / "docs", ROOT / "knowledge_base", ROOT / "release"]
     scan_files = [p for root in scan_roots if root.exists() for p in root.rglob("*") if p.is_file() and not should_skip(p)]
     findings = scan_secrets(scan_files)
     if findings:

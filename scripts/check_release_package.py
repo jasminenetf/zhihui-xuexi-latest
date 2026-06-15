@@ -14,6 +14,13 @@ SECRET_PATTERNS = [
     re.compile(r"(?i)(api[_-]?key|api[_-]?password|apisecret|secret|token)\s*=\s*['\"]?([A-Za-z0-9_\-:]{16,})"),
     re.compile(r"sk-[A-Za-z0-9]{20,}"),
 ]
+INTERNAL_AUDIT_FRAGMENTS = [
+    "/reports/",
+    "reports/",
+    "final_full_audit_after_3b.md",
+    "final_qa_audit.md",
+    "local_pending_static_qa_fix.diff",
+]
 
 
 def fail(message: str) -> int:
@@ -51,6 +58,7 @@ def main() -> int:
 
         forbidden = [n for n in lower_names if "/.git/" in n or "/node_modules/" in n or "/__pycache__/" in n or n.endswith("/.env") or "/.env." in n and not n.endswith(".env.example")]
         forbidden += [n for n in lower_names if "/venv/" in n or "/.venv/" in n or n.endswith(".log")]
+        forbidden += [n for n in lower_names if any(fragment in n for fragment in INTERNAL_AUDIT_FRAGMENTS)]
         if forbidden:
             print("Forbidden files:")
             for item in forbidden[:30]:

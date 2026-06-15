@@ -46,8 +46,14 @@ EXCLUDE_DIRS = {
     "dist",
     "final_delivery",
     "release_build",
+    "reports",
 }
 EXCLUDE_SUFFIXES = {".pyc", ".pyo", ".log", ".zip", ".7z", ".tar", ".gz"}
+INTERNAL_AUDIT_NAMES = {
+    "final_full_audit_after_3b.md",
+    "final_qa_audit.md",
+    "local_pending_static_qa_fix.diff",
+}
 SECRET_PATTERNS = [
     re.compile(r"(?i)(api[_-]?key|api[_-]?password|apisecret|api[_-]?secret|secret|token)\s*=\s*['\"]?([A-Za-z0-9_\-:]{16,})"),
     re.compile(r"(?i)bearer\s+([A-Za-z0-9_\-.]{20,})"),
@@ -78,6 +84,8 @@ def copy_if_exists(src: Path, dst: Path) -> bool:
 def should_skip(path: Path) -> bool:
     rel_parts = path.relative_to(ROOT).parts if path.is_absolute() else path.parts
     if any(part in EXCLUDE_DIRS for part in rel_parts):
+        return True
+    if path.name in INTERNAL_AUDIT_NAMES:
         return True
     if path.name == ".env" or (path.name.startswith(".env.") and path.name != ".env.example"):
         return True
@@ -187,7 +195,7 @@ def doc_system_development() -> str:
 
 - 学生可以用自然语言描述不会的问题。
 - 系统结合课程知识库给出有依据的解释。
-- 系统自动生成讲义、导图、题目、PPT、路径、视频脚本、动画预览和拓展阅读。
+- 系统自动生成学习讲义、思维导图、练习题、PPT 课件、学习路径、视频脚本、动画预览和拓展阅读。
 - 系统记录练习和错题，动态更新学习画像。
 - 系统给出下一步学习路径和复习建议。
 
@@ -197,11 +205,13 @@ def doc_system_development() -> str:
 
 ## 5. 多智能体协同设计
 
-- Tutor Agent：理解用户问题并组织任务。
-- Retriever / Informer Agent：检索课程依据。
-- Profile Agent：更新对话式学习画像。
-- Generator / Practice Agent：生成个性化学习资源和练习题。
-- Verifier Agent：进行引用覆盖检查和可信检查。
+- 画像智能体 ProfileAgent：读取画像、薄弱点和学习偏好。
+- 检索智能体 RetrievalAgent：检索课程知识库和章节依据。
+- 讲解智能体 TutorAgent：组织结构化讲解和问题诊断。
+- 资源智能体 ResourceAgent：生成学习讲义、思维导图、练习题、PPT 课件、学习路径、视频脚本、动画预览和拓展阅读。
+- 评估智能体 AssessmentAgent：根据练习、错题和掌握度形成复测建议。
+- 路径智能体 PlannerAgent：生成下一步学习路径。
+- 校验智能体 VerifierAgent：进行引用覆盖检查和可信检查。
 
 ## 6. 学习画像设计
 
@@ -221,7 +231,7 @@ def doc_system_development() -> str:
 
 ## 10. 动画预览与多模态设计
 
-当前版本提供函数极限、导数定义、定积分三个主题的轻量 HTML/SVG/CSS 动画预览，不生成 mp4。动画用于辅助理解抽象概念，并与视频脚本和资源中心打通。
+当前版本提供函数极限、导数定义、定积分、不定积分、微分方程、洛必达法则 6 类轻量 HTML/SVG/CSS 动画预览，不生成 mp4。动画用于辅助理解抽象概念，并与视频脚本和资源中心打通。
 
 ## 11. 防幻觉与内容安全
 
@@ -231,15 +241,19 @@ def doc_system_development() -> str:
 
 前端为 `frontend-demo` 静态工作台，后端为 FastAPI。Spark 推荐配置为 Base URL `{SPARK_BASE}`、Model `{SPARK_MODEL}`、APIPassword 使用用户自己的科大讯飞 APIPassword。
 
-## 13. 数据库与文件结构
+## 13. 课程知识库证据层
+
+项目包含 `knowledge_base/高等数学上册`，用于展示 7 章、40+ 知识点、RAG 样例查询和资源 grounding 示例。该证据层不公开完整版权教材原文，不包含真实密钥。
+
+## 14. 数据库与文件结构
 
 项目使用 SQLite / 本地文件保存演示数据和资源输出；课程知识库、资源结果、画像和报告围绕答辩 Demo 做轻量持久化。
 
-## 14. 部署方式
+## 15. 部署方式
 
 Windows 便携包提供启动脚本。另一台电脑仍需 Python 3.10+ 和后端 requirements。没有 API 时可使用本地演示模式完成学习闭环。
 
-## 15. 创新点
+## 16. 创新点
 
 - 对话式画像，不依赖繁琐表单。
 - 多智能体协同生成学习资源。
@@ -247,7 +261,11 @@ Windows 便携包提供启动脚本。另一台电脑仍需 Python 3.10+ 和后�
 - 从问答到练习、错题、报告、路径的完整闭环。
 - 轻量动画预览让抽象高数概念更直观。
 
-## 16. 局限与后续优化
+## 17. 交付与验证
+
+交付物包含 Windows 便携包、源码与数据包、系统文档、AI Coding 工具说明和 QA 检查脚本。评委包递归 forbidden hits 检查目标为 0，不包含 reports、个人备稿、Codex 提示词、真实密钥或 Actions 失败日志。当前正式 7 分钟演示视频仍待录制。
+
+## 18. 局限与后续优化
 
 当前动画不生成 mp4；正式账号权限、完整生产部署和更多课程适配仍需后续增强。
 """
@@ -285,7 +303,7 @@ def doc_test() -> str:
 
 ## 资源生成测试
 
-检查学习讲义、思维导图、练习题、PPT、学习路径、视频脚本、动画预览、拓展阅读是否可生成、预览和下载。
+检查学习讲义、思维导图、练习题、PPT 课件、学习路径、视频脚本、动画预览、拓展阅读是否可生成、预览和下载。
 
 ## 学习闭环测试
 
@@ -398,9 +416,11 @@ def doc_course() -> str:
 
 系统将课程材料拆分为可检索片段，围绕章节、知识点和学习主题组织。
 
+项目新增 `knowledge_base/高等数学上册` 证据层，包含 `course_manifest.json`、`chapter_outline.md`、`knowledge_points.json`、`rag_sample_queries.md`、`resource_grounding_examples.md` 和 `README.md`，用于展示学生问题如何映射到课程章节、知识点、RAG 检索和资源生成依据。
+
 ## 覆盖主题
 
-重点覆盖函数极限、导数定义、定积分、连续、微分等高等数学基础主题。
+重点覆盖函数极限、导数定义、定积分、不定积分、微分方程、连续、微分等高等数学基础主题。
 
 ## 资源依据
 
@@ -656,11 +676,11 @@ def video_script() -> str:
 
 ## 2:00-3:20 多资源生成
 
-依次展示学习讲义、思维导图、练习题、PPT、学习路径和视频脚本。强调资源围绕同一个薄弱点生成，并进入资源中心保存。
+依次展示学习讲义、思维导图、练习题、PPT 课件、学习路径、视频脚本、动画预览和拓展阅读。强调资源围绕同一个薄弱点生成，并进入资源中心保存。
 
 ## 3:20-4:10 动画预览亮点
 
-打开 video_script 中的动画预览，展示函数极限动画，再进入资源中心查看 animation_preview。说明这是轻量 HTML/SVG/CSS 动画预览，不生成 mp4。
+打开 video_script 中的动画预览，展示函数极限、不定积分或微分方程动画，再进入资源中心查看 animation_preview。说明这是轻量 HTML/SVG/CSS 动画预览，不生成 mp4。
 
 ## 4:10-5:10 练习反馈与错题闭环
 
@@ -686,10 +706,10 @@ def ppt_outline() -> str:
         ("赛题理解与痛点", "资源多、画像难、反馈慢、路径不清", "学生学习流程示意", "说明为什么需要智能体系统。"),
         ("项目定位", "面向高校工科基础课的个性化学习资源系统", "项目工作台截图", "强调高等数学上册样例课程。"),
         ("总体架构", "前端、后端、RAG、多智能体、资源中心", "架构图", "讲清系统模块关系。"),
-        ("多智能体协同流程", "Tutor、Retriever、Profile、Generator、Verifier", "Agent trace 截图", "突出多智能体不是口号，而是实际流程。"),
+        ("多智能体协同流程", "ProfileAgent、RetrievalAgent、TutorAgent、ResourceAgent、AssessmentAgent、PlannerAgent、VerifierAgent", "Agent trace 截图", "突出多智能体不是口号，而是实际流程。"),
         ("对话式学习画像", "不填表，通过提问和练习更新画像", "画像页截图", "说明画像维度和动态更新。"),
         ("多资源生成能力", RESOURCE_TYPES, "资源中心截图", "展示围绕一个问题生成多类资源。"),
-        ("动画预览与多模态亮点", "函数极限、导数、定积分轻量动画", "动画预览截图", "说明不生成 mp4，但可预览可下载 HTML。"),
+        ("动画预览与多模态亮点", "函数极限、导数、定积分、不定积分、微分方程、洛必达法则轻量动画", "动画预览截图", "说明不生成 mp4，但可预览可下载 HTML。"),
         ("错题反馈、学习报告、学习路径闭环", "答错讲解、错题本、掌握度、路径", "错题本和报告截图", "说明从练习到复盘的闭环。"),
         ("安全、可信检查与防幻觉", "课程依据、引用覆盖、风险等级", "可信检查截图", "强调 RAG 和 Verifier。"),
         ("测试与便携交付", "QA 脚本、Windows 便携包、跨电脑清单", "终端测试通过截图", "说明可复现和可交付。"),
@@ -699,6 +719,26 @@ def ppt_outline() -> str:
     for i, (title, focus, shot, speech) in enumerate(pages, 1):
         body.append(f"## {i}. {title}\n\n- 标题：{title}\n- 页面重点：{focus}\n- 建议截图：{shot}\n- 讲解话术：{speech}")
     return "\n\n".join(body)
+
+
+def ppt_final_update_checklist() -> str:
+    return f"""
+# 答辩PPT最终更新清单
+
+由于本轮目标是录视频前终检，不直接重写或伪造 PPTX。正式 PPTX 如需最后编辑，请按下列清单核对：
+
+1. 项目名称统一为：{PROJECT_NAME}
+2. 赛题方向统一为：高等教育个性化学习资源智能体系统。
+3. 样例课程统一为：高等数学上册。
+4. 总体架构按五层表达：前端学习工作台、后端智能体服务、课程知识库/RAG、Spark 大模型、资源生成/评估/路径更新。
+5. 多智能体图展示 7 个智能体：ProfileAgent、RetrievalAgent、TutorAgent、ResourceAgent、AssessmentAgent、PlannerAgent、VerifierAgent。
+6. 知识库证据层展示：7 章、40+ 知识点、RAG 样例、grounding 示例，并说明不公开完整版权教材原文。
+7. 功能闭环展示：对话诊断 → 学习画像 → 课程检索 → 多资源生成 → 练习反馈 → 错因分析 → 学习报告 → 路径更新。
+8. 多模态资源展示 8 类：{RESOURCE_TYPES}。
+9. 动画模板展示 6 类：函数极限、导数定义、定积分、不定积分、微分方程、洛必达法则。
+10. 工程交付展示：Windows 便携包、源码与数据包、系统文档、AI Coding 说明、QA passed、forbidden hits 0。
+11. 最后一页明确：当前待补为 7 分钟演示视频录制；系统已具备完整演示条件。
+"""
 
 
 def write_formal_docs() -> None:
@@ -776,6 +816,8 @@ def write_private_docs() -> None:
     write(PRIVATE / "02_演示视频稿" / "录屏口播稿.md", video_script())
     write(PRIVATE / "03_答辩PPT大纲" / "答辩PPT大纲.md", ppt_outline())
     write(PRIVATE / "03_答辩PPT大纲" / "每页讲解词.md", ppt_outline())
+    write(PRIVATE / "03_答辩PPT大纲" / "答辩PPT最终更新清单.md", ppt_final_update_checklist())
+    write(ROOT / "docs" / "final" / "答辩PPT最终更新清单.md", ppt_final_update_checklist())
     write(PRIVATE / "03_答辩PPT大纲" / "建议截图清单.md", """
 # 建议截图清单
 
@@ -853,9 +895,9 @@ def write_private_docs() -> None:
         "Spark配置修复.md": f"Spark 推荐配置统一为 Base URL `{SPARK_BASE}`、Model `{SPARK_MODEL}`、APIPassword 使用用户自己的科大讯飞 APIPassword。",
         "secret_scan误报修复.md": "修复 GitHub Actions 将 `_normalize_spark_api_password` 误判为密钥的问题，保留真实 token 检测能力。",
         "便携包修复.md": "新增 Windows 便携包构建和检查脚本，确保不包含真实 .env、.git、node_modules 和密钥。",
-        "动画预览修复.md": "新增函数极限、导数定义、定积分三个主题的轻量 HTML/SVG/CSS 动画预览。",
+        "动画预览修复.md": "新增函数极限、导数定义、定积分、不定积分、微分方程、洛必达法则 6 类轻量 HTML/SVG/CSS 动画预览。",
         "数学公式可读化修复.md": "将讲义和回答中的公式表达改为更适合学生理解的文本和结构。",
-        "学习资源质量重构.md": "提升讲义、思维导图、练习题、PPT、学习路径和视频脚本的教学针对性。",
+        "学习资源质量重构.md": "提升学习讲义、思维导图、练习题、PPT 课件、学习路径、视频脚本、动画预览和拓展阅读的教学针对性。",
     }
     for name, text in fixes.items():
         write(PRIVATE / "08_问题修复记录" / name, f"# {name.removesuffix('.md')}\n\n{text}")
@@ -930,7 +972,7 @@ def create_source_zip() -> None:
     if temp.exists():
         shutil.rmtree(temp)
     temp.mkdir(parents=True)
-    include_dirs = ["backend", "frontend-demo", "scripts", "release", "data", "outputs"]
+    include_dirs = ["backend", "frontend-demo", "scripts", "release", "knowledge_base", "data", "outputs"]
     for folder in include_dirs:
         src = ROOT / folder
         if not src.exists():
@@ -949,7 +991,7 @@ def create_source_zip() -> None:
         copy_if_exists(doc, final_docs_target / doc.name)
     for doc in (JUDGE / "06_AI_Coding说明").glob("*.md"):
         copy_if_exists(doc, final_docs_target / doc.name)
-    for file_name in ["README.md", "LICENSE", "backend/requirements.txt", "requirements.txt", "启动智能学习Agent.bat", ".env.example"]:
+    for file_name in ["README.md", "LICENSE", "backend/requirements.txt", "requirements.txt", ".env.example"]:
         src = ROOT / file_name
         if src.exists() and not should_skip(src):
             copy_if_exists(src, temp / file_name)

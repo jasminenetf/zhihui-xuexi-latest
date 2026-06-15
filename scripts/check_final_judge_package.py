@@ -5,6 +5,7 @@ from __future__ import annotations
 import re
 import sys
 import zipfile
+import io
 from pathlib import Path
 
 
@@ -16,6 +17,23 @@ SECRET_PATTERNS = [
     re.compile(r"(?i)(api[_-]?key|api[_-]?password|apisecret|api[_-]?secret|secret|token)\s*=\s*['\"]?([A-Za-z0-9_\-:]{16,})"),
     re.compile(r"(?i)bearer\s+([A-Za-z0-9_\-.]{20,})"),
     re.compile(r"(sk-[A-Za-z0-9]{20,})"),
+]
+FORBIDDEN_FRAGMENTS = [
+    "/.git/",
+    "/node_modules/",
+    "/venv/",
+    "/.venv/",
+    "/__pycache__/",
+    "/.pytest_cache/",
+    "/logs/",
+    "/reports/",
+    "reports/",
+    "02_个人备稿_不提交给评委",
+    "codex提示词",
+    "06_codex",
+    "final_full_audit_after_3b.md",
+    "final_qa_audit.md",
+    "local_pending_static_qa_fix.diff",
 ]
 
 
@@ -56,6 +74,31 @@ def secret_hits(zf: zipfile.ZipFile, names: list[str]) -> list[str]:
     return hits
 
 
+def forbidden_hits_in_names(names: list[str], prefix: str = "") -> list[str]:
+    lower = [n.lower().replace("\\", "/") for n in names]
+    hits = [f"{prefix}{n}" for n in lower if any(fragment.lower() in n for fragment in FORBIDDEN_FRAGMENTS)]
+    hits += [f"{prefix}{n}" for n in lower if n.endswith("/.env") or ("/.env." in n and not n.endswith(".env.example"))]
+    return hits
+
+
+def scan_nested_zip_bytes(data: bytes, label: str) -> list[str]:
+    findings: list[str] = []
+    try:
+        with zipfile.ZipFile(io.BytesIO(data)) as nested:
+            names = nested.namelist()
+            findings.extend(forbidden_hits_in_names(names, prefix=f"{label}!"))
+            findings.extend(secret_hits(nested, names))
+            for name in names:
+                if name.lower().endswith(".zip"):
+                    try:
+                        findings.extend(scan_nested_zip_bytes(nested.read(name), f"{label}!{name}"))
+                    except Exception as exc:
+                        findings.append(f"{label}!{name}: nested zip scan failed: {exc}")
+    except zipfile.BadZipFile:
+        findings.append(f"{label}: bad nested zip")
+    return findings
+
+
 def contains(names: list[str], fragment: str) -> bool:
     return any(fragment in name for name in names)
 
@@ -65,7 +108,6 @@ def validate_judge() -> int:
         return fail(f"judge package not found: {JUDGE_ZIP}")
     with zipfile.ZipFile(JUDGE_ZIP) as zf:
         names = zf.namelist()
-        lower = [n.lower().replace("\\", "/") for n in names]
         required = {
             "Windows 便携版 zip": "03_可运行系统/智学工坊-Windows-便携版.zip",
             "源码与数据 zip": "04_源码与数据/智学工坊_源码与数据.zip",
@@ -81,29 +123,24 @@ def validate_judge() -> int:
             if not ok:
                 return 1
 
-        forbidden_fragments = [
-            "/.git/",
-            "/node_modules/",
-            "/venv/",
-            "/.venv/",
-            "/__pycache__/",
-            "/.pytest_cache/",
-            "/logs/",
-            "02_个人备稿_不提交给评委",
-            "codex提示词",
-            "06_codex",
-            "final_full_audit_after_3b.md",
-            "final_qa_audit.md",
-            "local_pending_static_qa_fix.diff",
-        ]
-        forbidden = [n for n in lower if any(f.lower() in n for f in forbidden_fragments)]
-        forbidden += [n for n in lower if n.endswith("/.env") or ("/.env." in n and not n.endswith(".env.example"))]
+        forbidden = forbidden_hits_in_names(names)
         if forbidden:
             print("Forbidden judge package entries:")
             for item in forbidden[:40]:
                 print(f" - {item}")
             return 1
         print("forbidden judge entries: OK")
+
+        nested_findings: list[str] = []
+        for name in names:
+            if name.lower().endswith(".zip"):
+                nested_findings.extend(scan_nested_zip_bytes(zf.read(name), name))
+        if nested_findings:
+            print("Forbidden entries inside nested zip files:")
+            for item in nested_findings[:60]:
+                print(f" - {item}")
+            return 1
+        print("nested zip scan: OK")
 
         hits = secret_hits(zf, names)
         if hits:
