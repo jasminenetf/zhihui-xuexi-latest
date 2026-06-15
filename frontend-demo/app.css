@@ -64,6 +64,13 @@ a{color:var(--primary);text-decoration:none}
 .page-content{flex:1;overflow-y:auto;padding:20px}
 .page{display:none}.page.active{display:block}
 
+.animation-preview-head{border-color:#c7d2fe;background:#f8faff}
+.animation-preview-frame-wrap{border:1px solid var(--gray-200);border-radius:var(--radius);background:#fff;overflow:hidden;box-shadow:var(--shadow);margin-bottom:12px}
+.animation-preview-frame-wrap.compact{max-height:420px}
+.animation-preview-frame{display:block;width:100%;height:560px;border:0;background:#fff}
+.animation-preview-frame-wrap.compact .animation-preview-frame{height:360px}
+@media(max-width:900px){.animation-preview-frame{height:460px}.animation-preview-frame-wrap.compact .animation-preview-frame{height:320px}}
+
 /* ── Cards ────────────────────────────────────────────────────── */
 .card{background:#fff;border-radius:var(--radius);border:1px solid var(--gray-200);padding:16px;margin-bottom:12px;box-shadow:var(--shadow)}
 .card-header{font-size:14px;font-weight:700;margin-bottom:12px;display:flex;align-items:center;justify-content:space-between}

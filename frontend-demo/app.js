@@ -139,6 +139,7 @@ const _ARTIFACT_TAB_MAP = {
   study_plan: 'study_plan',
   reading: 'lecture',
   video_script: 'video_script',
+  animation_preview: 'video_script',
 };
 
 const RESOURCE_LABELS = {
@@ -149,6 +150,7 @@ const RESOURCE_LABELS = {
   study_plan: '学习路径',
   reading: '拓展阅读',
   video_script: '视频脚本',
+  animation_preview: '动画预览',
 };
 
 const RESOURCE_TYPE_OPTIONS = [
@@ -158,6 +160,7 @@ const RESOURCE_TYPE_OPTIONS = [
   { type: 'ppt', label: '教学 PPT', desc: '生成像老师讲课一样的 Markdown 课件' },
   { type: 'study_plan', label: '学习路径', desc: '按薄弱点规划先学什么、练什么、怎么验收' },
   { type: 'video_script', label: '视频脚本', desc: '生成口播脚本、镜头节奏和讲解提纲' },
+  { type: 'animation_preview', label: '动画预览', desc: '用 HTML/SVG 动画解释极限、导数和定积分' },
   { type: 'reading', label: '拓展阅读', desc: '补充背景解释和延伸阅读材料' },
 ];
 
@@ -385,6 +388,7 @@ function _resourceDownloadBtn(resourceId, downloadUrl, filename) {
 }
 
 function _resourceFileExt(type) {
+  if (type === 'animation_preview') return '.html';
   return ['lecture_doc', 'mindmap', 'quiz', 'ppt', 'study_plan', 'reading', 'video_script'].includes(type) ? '.md' : '.txt';
 }
 
@@ -521,6 +525,7 @@ function _resourceUseText(type){
     ppt: '适合按课堂讲解顺序系统学习',
     study_plan: '适合规划下一步复习和练习安排',
     video_script: '适合口播讲解、录课或跟读复习',
+    animation_preview: '适合把抽象概念先看成动态过程，再回到讲义和练习验证理解',
     reading: '适合补充背景和拓展理解',
   };
   return map[type] || '适合当前主题的个性化学习';
@@ -553,8 +558,14 @@ function _resourceNextActionButtons(type, topic){
     ],
     video_script: [
       ['video_script', '查看脚本'],
+      ['animation_preview', '动画预览'],
       ['ppt', '生成配套 PPT'],
       ['quiz', '生成配套练习题'],
+    ],
+    animation_preview: [
+      ['video_script', '生成视频脚本'],
+      ['quiz', '做 3 道练习'],
+      ['study_plan', '加入学习路径'],
     ],
   };
   return (map[type] || [['quiz', '继续练习'], ['study_plan', '加入路径']]).map(function(item){
@@ -1304,6 +1315,33 @@ function _renderPptPanel(el, d){
     }).join('') : '<div class="course-card"><h4>课堂演示版 PPT 已生成</h4><div class="course-meta"><span>点击下载按钮获取 Markdown 教学稿</span></div></div>');
 }
 
+function _animationHtmlOf(d){
+  const preview = (d && d.animation_preview) || {};
+  return String((d && (d.html || (typeof d.content === 'string' && /^\s*<!doctype html/i.test(d.content) ? d.content : ''))) || preview.html || '');
+}
+
+function _renderAnimationPreviewPanel(el, d, topic){
+  if (!el) return;
+  const htmlDoc = _animationHtmlOf(d);
+  const title = (d && d.title) || ((topic || _currentLearningTopic('函数极限')) + ' · 动画预览');
+  const kindMap = { limit: '函数极限动态示意', derivative: '导数定义动态示意', integral: '定积分累积动态示意' };
+  const kind = (d && (d.topic_kind || ((d.animation_preview || {}).topic_kind))) || 'limit';
+  const iframeId = 'animation-preview-' + Date.now();
+  el.innerHTML =
+    '<div class="course-card animation-preview-head"><h4>🎞️ ' + fmtEsc(title) + '</h4>' +
+    '<div class="course-meta"><span>' + esc(kindMap[kind] || '高数概念动画') + '</span><span>纯 HTML/SVG/CSS/JS</span><span>可下载 HTML</span></div>' +
+    '<p class="learning-text">先看动态过程，再回到讲义、PPT 和 3 道练习确认是否真的理解。</p>' +
+    '<div class="primary-actions"><button class="btn btn-sm btn-outline" onclick="quickGenerateFromChat(&quot;video_script&quot;, ' + jsAttrArg(topic || title) + ')">生成视频脚本</button><button class="btn btn-sm btn-outline" onclick="quickGenerateFromChat(&quot;quiz&quot;, ' + jsAttrArg(topic || title) + ')">做 3 道练习</button>' +
+    (d && d.download_url ? _resourceDownloadBtn(d.resource_id || d.id, d.download_url, title + '.html') : '') + '</div></div>' +
+    (htmlDoc ? '<div class="animation-preview-frame-wrap"><iframe id="' + iframeId + '" class="animation-preview-frame" title="动画预览"></iframe></div>' : '<div class="empty-state"><div class="empty-icon">🎞️</div><p>动画预览暂未生成，请重新点击动画预览。</p></div>');
+  if (htmlDoc) {
+    setTimeout(function(){
+      const frame = document.getElementById(iframeId);
+      if (frame) frame.srcdoc = htmlDoc;
+    }, 0);
+  }
+}
+
 function _renderTextResourcePanel(el, d, type){
   if (!el) return;
   const content = typeof d.content === 'object' ? JSON.stringify(d.content, null, 2) : (d.content || '内容生成完成');
@@ -1332,6 +1370,10 @@ function _renderTextResourcePanel(el, d, type){
   if (type === 'video_script') {
     const structuredScenes = Array.isArray(d.scenes) ? d.scenes : [];
     const textScenes = structuredScenes.length ? [] : content.split(/\n\s*\n|(?=镜头\s*\d+)|(?=场景\s*\d+)|(?=分镜\s*\d+)|(?=Scene\s*\d+)/i).map(s => s.trim()).filter(Boolean).slice(0, 8);
+    const previewTopic = d.topic || ((d.learning_intent || {}).clean_topic) || _currentLearningTopic();
+    const animationPreview = d.animation_preview || {};
+    const animationHtml = _animationHtmlOf({ animation_preview: animationPreview });
+    const iframeId = 'video-script-animation-' + Date.now();
     const scenesHtml = structuredScenes.length
       ? structuredScenes.map(function(s, i){
           return '<div class="course-card"><h4>🎬 分镜 ' + esc(String(s.scene_index || (i + 1))) + '：' + fmtEsc(s.title || '讲解片段') + '</h4>' +
@@ -1340,8 +1382,18 @@ function _renderTextResourcePanel(el, d, type){
         }).join('')
       : (textScenes.length ? textScenes.map(function(s, i){ return '<div class="course-card"><h4>🎬 分镜 ' + (i + 1) + '</h4><div class="course-meta"><span>建议时长 30-60 秒</span><span>画面 + 旁白</span></div><div style="white-space:pre-wrap;font-size:13px;line-height:1.65;margin-top:8px">' + fmtEsc(s) + '</div></div>'; }).join('') : '<div class="course-card"><div style="white-space:pre-wrap;font-size:13px;line-height:1.65">' + fmtEsc(content) + '</div></div>');
     const videoMeta = d.video_script || {};
+    const animationCard = '<div class="course-card animation-preview-head"><h4>🎞️ 动画预览</h4><div class="course-meta"><span>与视频脚本配套</span><span>纯 HTML/SVG/CSS</span><span>可下载 HTML</span></div>' +
+      '<p class="learning-text">先用动画看清变化过程，再按分镜脚本讲解。当前只覆盖函数极限、导数定义和定积分三个高数主题。</p>' +
+      '<div class="primary-actions"><button class="btn btn-sm btn-primary" onclick="loadArtifactPreview(&quot;animation_preview&quot;, ' + jsAttrArg(previewTopic) + ')">打开动画预览</button><button class="btn btn-sm btn-outline" onclick="quickGenerateFromChat(&quot;quiz&quot;, ' + jsAttrArg(previewTopic) + ')">看完做 3 题</button></div></div>' +
+      (animationHtml ? '<div class="animation-preview-frame-wrap compact"><iframe id="' + iframeId + '" class="animation-preview-frame" title="视频脚本配套动画"></iframe></div>' : '');
     el.innerHTML = '<div class="course-card"><h4>' + fmtEsc(title) + '</h4><div class="course-meta"><span>视频脚本分镜</span><span>' + (structuredScenes.length || textScenes.length) + ' 个片段</span><span>适合录制讲解视频</span></div>' +
-      '<p style="font-size:12px;color:var(--gray-500);line-height:1.6;margin-top:6px">' + fmtEsc(videoMeta.learning_problem || '围绕当前知识点讲清定义、误区和例题。') + '</p></div>' + scenesHtml;
+      '<p style="font-size:12px;color:var(--gray-500);line-height:1.6;margin-top:6px">' + fmtEsc(videoMeta.learning_problem || '围绕当前知识点讲清定义、误区和例题。') + '</p></div>' + animationCard + scenesHtml;
+    if (animationHtml) {
+      setTimeout(function(){
+        const frame = document.getElementById(iframeId);
+        if (frame) frame.srcdoc = animationHtml;
+      }, 0);
+    }
     return;
   }
   const sections = String(content).split(/\n{2,}/).map(s => s.trim()).filter(Boolean).slice(0, 14);
@@ -1430,6 +1482,8 @@ async function loadArtifactPreview(type, topic){
       S.pendingStudyPlan = d.study_plan || null;
       S.pendingStudyTopic = topic || '';
       _renderStudyPlanPanel(panel, d, topic);
+    } else if (type === 'animation_preview') {
+      _renderAnimationPreviewPanel(panel, d, topic);
     } else {
       _renderTextResourcePanel(panel, d, type);
     }
@@ -1462,7 +1516,7 @@ async function autoGenerateStudyArtifacts(topic, suggestions){
 
 window.quickGenerateFromChat = function(type, topic){
   topic = topic || _currentLearningTopic();
-  if (['mindmap', 'quiz', 'lecture_doc', 'ppt', 'study_plan', 'reading', 'video_script'].includes(type)) {
+  if (['mindmap', 'quiz', 'lecture_doc', 'ppt', 'study_plan', 'reading', 'video_script', 'animation_preview'].includes(type)) {
     const assistantPage = document.getElementById('page-assistant');
     if (assistantPage && assistantPage.classList.contains('active')) {
       loadArtifactPreview(type, topic);
@@ -1709,8 +1763,8 @@ function _resourcePackageOverview(files){
     const t = _resourceTypeOf(f);
     grouped[t] = (grouped[t] || 0) + 1;
   });
-  const order = ['lecture_doc','mindmap','quiz','ppt','study_plan','video_script','reading','file'];
-  const labels = { lecture_doc: '学习讲义', mindmap: '思维导图', quiz: '练习题', ppt: '教学 PPT', study_plan: '学习路径', reading: '拓展阅读', video_script: '视频脚本', file: '其他资源' };
+  const order = ['lecture_doc','mindmap','quiz','ppt','study_plan','video_script','animation_preview','reading','file'];
+  const labels = { lecture_doc: '学习讲义', mindmap: '思维导图', quiz: '练习题', ppt: '教学 PPT', study_plan: '学习路径', reading: '拓展阅读', video_script: '视频脚本', animation_preview: '动画预览', file: '其他资源' };
   return '<div class="card" style="margin-bottom:12px"><div class="card-header"><h3>📦 资源包概览</h3></div><div class="course-meta" style="margin-bottom:8px"><span>已将当前资源聚合为可学习的资源包视图</span></div><div style="display:flex;gap:8px;flex-wrap:wrap">' + order.filter(function(k){ return grouped[k]; }).map(function(k){ return '<span class="lr-chip">' + esc(labels[k]) + ' ' + grouped[k] + '</span>'; }).join('') + '</div></div>';
 }
 
@@ -1730,7 +1784,7 @@ function _resourceToolbar(filter, query, sort, typeFilter){
       '<option value="size"' + (sort === 'size' ? ' selected' : '') + '>按大小</option>' +
     '</select>' +
     '<select id="resource-type-filter" class="input" style="min-width:130px;max-width:180px" onchange="loadResourceCenter(\'' + filter + '\', document.getElementById(\'resource-search\') ? document.getElementById(\'resource-search\').value : \'\', document.getElementById(\'resource-sort\') ? document.getElementById(\'resource-sort\').value : \'newest\', this.value)">' +
-      ['all:全部类型','lecture_doc:学习讲义','mindmap:思维导图','quiz:练习题','ppt:教学 PPT','study_plan:学习路径','video_script:视频脚本','reading:拓展阅读'].map(x => {
+      ['all:全部类型','lecture_doc:学习讲义','mindmap:思维导图','quiz:练习题','ppt:教学 PPT','study_plan:学习路径','video_script:视频脚本','animation_preview:动画预览','reading:拓展阅读'].map(x => {
         const p = x.split(':');
         return '<option value="' + p[0] + '"' + (typeFilter === p[0] ? ' selected' : '') + '>' + esc(p[1]) + '</option>';
       }).join('') +
@@ -1743,7 +1797,7 @@ function _resourceTags(activeType, files){
   const counts = {};
   (files || []).forEach(function(f){ const t = _resourceTypeOf(f); counts[t] = (counts[t] || 0) + 1; });
   const tags = [
-    ['lecture_doc', '学习讲义'], ['mindmap', '思维导图'], ['quiz', '练习题'], ['ppt', '教学 PPT'], ['study_plan', '学习路径'], ['video_script', '视频脚本'], ['reading', '拓展阅读']
+    ['lecture_doc', '学习讲义'], ['mindmap', '思维导图'], ['quiz', '练习题'], ['ppt', '教学 PPT'], ['study_plan', '学习路径'], ['video_script', '视频脚本'], ['animation_preview', '动画预览'], ['reading', '拓展阅读']
   ];
   return '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px">' + tags.map(t => '<button class="btn btn-sm ' + (activeType === t[0] ? 'btn-primary' : 'btn-outline') + '" onclick="loadResourceCenter(\'file\', document.getElementById(\'resource-search\') ? document.getElementById(\'resource-search\').value : \'\', document.getElementById(\'resource-sort\') ? document.getElementById(\'resource-sort\').value : \'newest\', \'' + t[0] + '\')">' + esc(t[1]) + ' ' + esc(String(counts[t[0]] || 0)) + '</button>').join('') + '</div>';
 }
@@ -1754,6 +1808,7 @@ function _resourceTypeOf(file){
   if (/quiz|题|练习|test/.test(hay)) return 'quiz';
   if (/ppt|presentation|slide|课件/.test(hay)) return 'ppt';
   if (/study_plan|学习路径|路径|计划/.test(hay)) return 'study_plan';
+  if (/animation_preview|animation|动画|svg|html/.test(hay)) return 'animation_preview';
   if (/reading|阅读|拓展/.test(hay)) return 'reading';
   if (/video|script|视频|脚本/.test(hay)) return 'video_script';
   if (/lecture|doc|讲义|笔记|markdown|pdf/.test(hay)) return 'lecture_doc';
@@ -1770,7 +1825,7 @@ function _resourceFileCards(files){
     const origin = f.title || f.original_filename || f.filename || label || '学习资源';
     const course = f.course_name || f.course_title || '';
     const createdAt = f.created_at || f.updated_at || '';
-    const icon = { lecture_doc: '📘', mindmap: '🧠', quiz: '📝', ppt: '📊', reading: '📚', video_script: '🎬', study_plan: '🗺️', file: '📄' }[type] || '📄';
+    const icon = { lecture_doc: '📘', mindmap: '🧠', quiz: '📝', ppt: '📊', reading: '📚', video_script: '🎬', animation_preview: '🎞️', study_plan: '🗺️', file: '📄' }[type] || '📄';
     const topic = f.topic || f.knowledge_point || origin;
     const v = _verificationSummary(f);
     const rag = _ragSummary(f);
@@ -1787,7 +1842,7 @@ function _resourceFileCards(files){
       '<div class="course-meta"><span>引用覆盖率 ' + esc(v.coverageLabel) + '</span><span>支持断言 ' + esc(v.supportedText) + '</span><span>无依据断言 ' + esc(v.unsupportedText) + '</span><span>风险等级 ' + esc(v.risk) + '</span></div>' +
       techDetails +
       '<div style="margin-top:8px;display:flex;gap:8px;flex-wrap:wrap">' +
-      '<button class="btn btn-sm btn-outline" onclick="loadArtifactPreview(' + jsAttrArg(type) + ', ' + jsAttrArg(topic) + ')">预览</button>' +
+      '<button class="btn btn-sm btn-outline" onclick="loadArtifactPreview(' + jsAttrArg(type) + ', ' + jsAttrArg(topic) + ')">' + (type === 'animation_preview' ? '动画预览' : '预览') + '</button>' +
       _resourceDownloadBtn(f.resource_id || f.id, f.download_url, origin + _resourceFileExt(type)) +
       '<button class="btn btn-sm btn-outline" onclick="bookmarkResource(' + jsAttrArg(rid) + ', ' + jsAttrArg(oname) + ')">收藏</button>' + _resourceNextActionButtons(type, topic) + '</div></div>';
   }).join('');

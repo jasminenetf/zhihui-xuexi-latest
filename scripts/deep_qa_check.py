@@ -23,6 +23,11 @@ ROOT = Path(__file__).resolve().parents[1]
 BASE = os.getenv("DEEP_QA_BASE", "http://127.0.0.1:8010").rstrip("/")
 QUESTION = "我不理解函数极限，讲清定义、常见误区，并给一个例题"
 RESOURCE_TYPES = ["lecture_doc", "mindmap", "quiz", "ppt", "study_plan", "video_script"]
+ANIMATION_TOPICS = [
+    ("函数极限", ["x→x0", "f(x)", "A", "趋近"]),
+    ("导数定义", ["割线", "切线", "h→0", "f'(x)"]),
+    ("定积分", ["小矩形", "累加", "∫", "面积"]),
+]
 TEST_PREFIX = "QA_TEST_"
 
 
@@ -211,6 +216,42 @@ def check_downloads(resources: list[dict[str, Any]]) -> None:
     print("[PASS] resource downloads")
 
 
+def check_animation_preview_resources() -> None:
+    for topic, markers in ANIMATION_TOPICS:
+        res = unwrap(
+            request_json(
+                "/api/app/generate",
+                "POST",
+                {"course_id": 1, "resource_type": "animation_preview", "topic": topic},
+                timeout=60,
+            )
+        )
+        assert_true(res.get("resource_type") == "animation_preview", f"{topic} animation has wrong resource_type")
+        assert_true(res.get("download_url"), f"{topic} animation missing download_url")
+        assert_true(res.get("title") and topic in str(res.get("title")), f"{topic} animation title is not topic-based")
+        html_text = text_of(res.get("html") or res.get("content") or (res.get("animation_preview") or {}).get("html"))
+        assert_true("<svg" in html_text and "</html>" in html_text, f"{topic} animation is not standalone HTML/SVG")
+        assert_true("mp4" not in html_text.lower(), f"{topic} animation should not reference mp4")
+        assert_true(any(marker in html_text for marker in markers), f"{topic} animation missing topic markers")
+        assert_true("高等数学上册" in html_text, f"{topic} animation missing course basis")
+        assert_true("Verifier" in html_text, f"{topic} animation missing verifier marker")
+        downloaded = request_text(str(res["download_url"]), timeout=60)
+        assert_true("<!doctype html>" in downloaded.lower(), f"{topic} animation download is not HTML")
+        assert_true("<svg" in downloaded, f"{topic} animation download missing SVG")
+
+    video = unwrap(
+        request_json(
+            "/api/app/generate",
+            "POST",
+            {"course_id": 1, "resource_type": "video_script", "topic": "函数极限"},
+            timeout=60,
+        )
+    )
+    preview = video.get("animation_preview") or {}
+    assert_true(preview.get("html") and "<svg" in preview.get("html"), "video_script missing embedded animation preview")
+    print("[PASS] animation preview resources")
+
+
 def check_stage_3a5_definition_quality() -> None:
     sample = "定积分的定义"
     ask = unwrap(request_json("/api/app/ask", "POST", {"course_id": 1, "question": sample}, timeout=180))
@@ -324,6 +365,7 @@ def main() -> int:
         check_p0_smoke()
         resources = check_learning_loop()
         check_downloads(resources)
+        check_animation_preview_resources()
         check_stage_3a5_definition_quality()
         check_secret_hygiene()
     except QaFailure as exc:

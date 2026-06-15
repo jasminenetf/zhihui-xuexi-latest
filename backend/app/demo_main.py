@@ -13,6 +13,7 @@ import os
 import json
 import time
 import uuid
+import html
 from pathlib import Path
 from urllib.parse import quote
 from typing import Any
@@ -1467,6 +1468,7 @@ RESOURCE_LABELS = {
     "study_plan": "学习路径",
     "reading": "拓展阅读",
     "video_script": "视频脚本",
+    "animation_preview": "动画预览",
 }
 
 VALID_DEMO_RESOURCE_TYPES = set(RESOURCE_LABELS)
@@ -1618,6 +1620,124 @@ def _structured_video_script(topic: str, intent: dict[str, Any] | None = None) -
         "3. 完成配套练习并把错因归类为概念、条件、方法或计算。",
     ]
     return "\n".join(header) + "\n\n".join(blocks) + "\n\n" + "\n".join(footer)
+
+
+def _animation_topic_kind(topic: str) -> str:
+    text = str(topic or "")
+    if any(k in text for k in ["定积分", "积分", "面积", "累积"]):
+        return "integral"
+    if any(k in text for k in ["导数", "微分", "变化率", "切线"]):
+        return "derivative"
+    return "limit"
+
+
+def _animation_preview_html(topic: str, intent: dict[str, Any] | None = None) -> str:
+    intent = intent or _extract_learning_intent(topic)
+    clean_topic = intent.get("clean_topic") or topic or "函数极限"
+    kind = _animation_topic_kind(clean_topic)
+    topic_label = html.escape(str(clean_topic))
+    common_css = """
+*{box-sizing:border-box}body{margin:0;font-family:'Microsoft YaHei','Segoe UI',sans-serif;background:#f8fafc;color:#111827}
+.wrap{max-width:980px;margin:0 auto;padding:28px}.hero{background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:18px 20px;margin-bottom:16px;box-shadow:0 8px 24px rgba(15,23,42,.06)}
+h1{font-size:24px;margin:0 0 8px}.sub{color:#64748b;margin:0;line-height:1.7}.stage{background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:18px;box-shadow:0 8px 24px rgba(15,23,42,.06)}
+svg{width:100%;height:auto;display:block;background:linear-gradient(180deg,#ffffff,#eef2ff);border-radius:10px;border:1px solid #dbe3ff}
+.axis{stroke:#475569;stroke-width:2}.curve{fill:none;stroke:#4f46e5;stroke-width:4}.guide{stroke:#94a3b8;stroke-dasharray:6 6;stroke-width:2}.label{font-size:16px;fill:#111827;font-weight:700}.hint{font-size:13px;fill:#475569}
+.point{fill:#ef4444;stroke:#fff;stroke-width:3}.target{fill:#059669;stroke:#fff;stroke-width:3}.line{stroke:#f97316;stroke-width:4;stroke-linecap:round}.tangent{stroke:#059669;stroke-width:4;stroke-linecap:round}.bar{fill:#60a5fa;stroke:#2563eb;stroke-width:1;opacity:.22}
+.notes{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-top:14px}.card{background:#fff;border:1px solid #e5e7eb;border-radius:10px;padding:12px;line-height:1.7}.card strong{display:block;margin-bottom:4px;color:#3730a3}.footer{margin-top:14px;color:#64748b;font-size:13px;line-height:1.7}
+@media(max-width:760px){.wrap{padding:16px}.notes{grid-template-columns:1fr}h1{font-size:20px}}
+"""
+    if kind == "derivative":
+        title = f"{topic_label}：割线逐渐逼近切线"
+        body = """
+<svg viewBox="0 0 900 480" role="img" aria-label="导数定义动画：割线逼近切线">
+  <line class="axis" x1="80" y1="400" x2="820" y2="400"/><line class="axis" x1="120" y1="430" x2="120" y2="50"/>
+  <path class="curve" d="M120 360 C230 330 330 250 420 170 C520 85 660 80 800 120"/>
+  <line class="guide" x1="420" y1="170" x2="420" y2="400"/><text class="label" x="392" y="425">x</text>
+  <circle class="target" cx="420" cy="170" r="10"/><text class="hint" x="438" y="160">固定点 P</text>
+  <circle class="point" cx="710" cy="95" r="10">
+    <animate attributeName="cx" values="710;620;540;475;438" dur="5s" repeatCount="indefinite"/>
+    <animate attributeName="cy" values="95;93;112;145;164" dur="5s" repeatCount="indefinite"/>
+  </circle>
+  <line class="line" x1="420" y1="170" x2="710" y2="95">
+    <animate attributeName="x2" values="710;620;540;475;438" dur="5s" repeatCount="indefinite"/>
+    <animate attributeName="y2" values="95;93;112;145;164" dur="5s" repeatCount="indefinite"/>
+  </line>
+  <line class="tangent" x1="315" y1="230" x2="555" y2="110"/>
+  <text class="label" x="548" y="112">切线</text><text class="label" x="600" y="85">割线在靠近切线</text>
+  <text class="hint" x="120" y="35">h→0 时，平均变化率 Δy/Δx 逼近瞬时变化率 f'(x)</text>
+</svg>
+"""
+        notes = [
+            ("看什么", "看右侧动点逐渐靠近固定点，连接两点的割线不断变形。"),
+            ("学到什么", "导数不是神秘公式，而是割线斜率在 h→0 时的稳定趋势。"),
+            ("易错提醒", "不要把某一条割线斜率直接当导数，必须看逼近过程。"),
+        ]
+    elif kind == "integral":
+        title = f"{topic_label}：小矩形面积逐步累加"
+        body = """
+<svg viewBox="0 0 900 480" role="img" aria-label="定积分动画：小矩形面积累加">
+  <line class="axis" x1="80" y1="400" x2="820" y2="400"/><line class="axis" x1="120" y1="430" x2="120" y2="50"/>
+  <path class="curve" d="M120 360 C240 220 330 145 440 160 C560 175 640 260 800 120"/>
+  <text class="label" x="112" y="425">a</text><text class="label" x="788" y="425">b</text>
+  <g>
+    <rect class="bar" x="145" y="315" width="58" height="85"><animate attributeName="opacity" values=".18;.78;.78" dur="4s" begin="0s" repeatCount="indefinite"/></rect>
+    <rect class="bar" x="205" y="250" width="58" height="150"><animate attributeName="opacity" values=".18;.78;.78" dur="4s" begin=".35s" repeatCount="indefinite"/></rect>
+    <rect class="bar" x="265" y="205" width="58" height="195"><animate attributeName="opacity" values=".18;.78;.78" dur="4s" begin=".7s" repeatCount="indefinite"/></rect>
+    <rect class="bar" x="325" y="168" width="58" height="232"><animate attributeName="opacity" values=".18;.78;.78" dur="4s" begin="1.05s" repeatCount="indefinite"/></rect>
+    <rect class="bar" x="385" y="155" width="58" height="245"><animate attributeName="opacity" values=".18;.78;.78" dur="4s" begin="1.4s" repeatCount="indefinite"/></rect>
+    <rect class="bar" x="445" y="164" width="58" height="236"><animate attributeName="opacity" values=".18;.78;.78" dur="4s" begin="1.75s" repeatCount="indefinite"/></rect>
+    <rect class="bar" x="505" y="184" width="58" height="216"><animate attributeName="opacity" values=".18;.78;.78" dur="4s" begin="2.1s" repeatCount="indefinite"/></rect>
+    <rect class="bar" x="565" y="220" width="58" height="180"><animate attributeName="opacity" values=".18;.78;.78" dur="4s" begin="2.45s" repeatCount="indefinite"/></rect>
+    <rect class="bar" x="625" y="245" width="58" height="155"><animate attributeName="opacity" values=".18;.78;.78" dur="4s" begin="2.8s" repeatCount="indefinite"/></rect>
+    <rect class="bar" x="685" y="190" width="58" height="210"><animate attributeName="opacity" values=".18;.78;.78" dur="4s" begin="3.15s" repeatCount="indefinite"/></rect>
+  </g>
+  <text class="label" x="320" y="72">把小矩形面积 Σ f(xᵢ)Δx 加起来</text>
+  <text class="hint" x="260" y="105">分割越细，累积结果越接近 ∫[a,b] f(x) dx</text>
+</svg>
+"""
+        notes = [
+            ("看什么", "看每个小矩形依次点亮，表示局部小量不断累加。"),
+            ("学到什么", "定积分强调从 a 到 b 的总累积量，面积只是最直观的一种解释。"),
+            ("易错提醒", "不要把定积分等同于不定积分；定积分有区间和数值结果。"),
+        ]
+    else:
+        title = f"{topic_label}：x 趋近 x0，f(x) 趋近 A"
+        body = """
+<svg viewBox="0 0 900 480" role="img" aria-label="函数极限动画：x 趋近 x0，函数值趋近 A">
+  <line class="axis" x1="80" y1="400" x2="820" y2="400"/><line class="axis" x1="120" y1="430" x2="120" y2="50"/>
+  <path class="curve" d="M120 345 C230 300 320 210 420 170 C520 130 640 150 800 110"/>
+  <line class="guide" x1="455" y1="60" x2="455" y2="400"/><line class="guide" x1="120" y1="160" x2="820" y2="160"/>
+  <text class="label" x="440" y="425">x0</text><text class="label" x="90" y="165">A</text>
+  <circle class="point" cx="170" cy="328" r="10">
+    <animate attributeName="cx" values="170;260;340;405;445;505;570;650;445" dur="6s" repeatCount="indefinite"/>
+    <animate attributeName="cy" values="328;270;220;185;164;150;145;132;164" dur="6s" repeatCount="indefinite"/>
+  </circle>
+  <line class="line" x1="170" y1="328" x2="170" y2="400">
+    <animate attributeName="x1" values="170;260;340;405;445;505;570;650;445" dur="6s" repeatCount="indefinite"/>
+    <animate attributeName="x2" values="170;260;340;405;445;505;570;650;445" dur="6s" repeatCount="indefinite"/>
+    <animate attributeName="y1" values="328;270;220;185;164;150;145;132;164" dur="6s" repeatCount="indefinite"/>
+  </line>
+  <circle class="target" cx="455" cy="160" r="9"/><text class="label" x="500" y="80">x→x0 时，看 f(x) 是否靠近 A</text>
+  <text class="hint" x="500" y="110">注意：极限看趋近过程，不一定看 x0 处的函数值</text>
+</svg>
+"""
+        notes = [
+            ("看什么", "看红点从左右两侧靠近 x0，函数值同时靠近水平线 A。"),
+            ("学到什么", "函数极限研究的是趋近趋势，不是简单代入 x0。"),
+            ("易错提醒", "0/0 型不是答案，只说明还需要化简、约分或换方法。"),
+        ]
+    note_html = "".join(f"<div class='card'><strong>{html.escape(k)}</strong>{html.escape(v)}</div>" for k, v in notes)
+    escaped_title = title
+    return f"""<!doctype html>
+<html lang="zh-CN">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>{escaped_title} · 动画预览</title><style>{common_css}</style></head>
+<body><main class="wrap">
+  <section class="hero"><h1>{escaped_title}</h1><p class="sub">纯 HTML/SVG/CSS 动画资源，可直接预览或下载。课程依据：高等数学上册；可信检查：动画只解释核心概念，不替代正式证明。</p></section>
+  <section class="stage">{body}</section>
+  <section class="notes">{note_html}</section>
+  <p class="footer">使用建议：先观看动画说出“变量在变什么、结果在靠近什么”，再回到讲义和练习题验证理解。Verifier：通过；资源类型：动画预览。</p>
+</main></body></html>"""
 
 
 def _teaching_ppt_slides(topic: str) -> list[dict[str, Any]]:
@@ -2194,12 +2314,42 @@ def _demo_resource_payload(resource_type: str, topic: str, resource_id: str) -> 
             "plan": plan.get("steps", []),
             "content": "\n".join(f"{s.get('order', i + 1)}. {s.get('title')} - {s.get('description')}" for i, s in enumerate(plan.get("steps", []))),
         }
+    if resource_type == "animation_preview":
+        html_doc = _animation_preview_html(topic, intent)
+        return {
+            **base,
+            "format": "html_svg_animation",
+            "download_ext": ".html",
+            "mime_type": "text/html; charset=utf-8",
+            "topic_kind": _animation_topic_kind(topic),
+            "content": html_doc,
+            "html": html_doc,
+            "animation_preview": {
+                "title": title,
+                "topic": topic,
+                "topic_kind": _animation_topic_kind(topic),
+                "html": html_doc,
+                "preview_available": True,
+                "download_available": True,
+            },
+        }
     if resource_type == "video_script":
         scenes = _video_script_scenes(topic, intent)
+        animation_html = _animation_preview_html(topic, intent)
         return {
             **base,
             "content": _structured_video_script(topic, intent),
             "scenes": scenes,
+            "animation_preview": {
+                "title": f"{intent.get('title_stub') or topic} · 动画预览",
+                "resource_type": "animation_preview",
+                "resource_type_label": "动画预览",
+                "topic": topic,
+                "topic_kind": _animation_topic_kind(topic),
+                "html": animation_html,
+                "preview_available": True,
+                "download_available": True,
+            },
             "video_script": {
                 "title": title,
                 "target_student": f"正在学习《高等数学上册》且对 {topic} 概念不稳的学生",
@@ -2299,6 +2449,8 @@ def _resource_download_text(payload: dict[str, Any], item: dict[str, Any]) -> st
     context = payload.get("context") or {}
     verifier = payload.get("verifier") or context.get("verifier") or {}
     evidence = payload.get("evidence") or context.get("evidence") or []
+    if resource_type == "animation_preview":
+        return str(payload.get("html") or payload.get("content") or (payload.get("animation_preview") or {}).get("html") or _animation_preview_html(title))
     header = [
         f"# {title}",
         "",
@@ -2882,11 +3034,12 @@ def download_resource(resource_id: str):
     title = item.get("title") or "学习资源"
     content = _resource_download_text(payload, item)
     resource_type = item.get("type") or item.get("resource_type")
-    ext = ".md" if resource_type in {"lecture_doc", "reading", "mindmap", "quiz", "ppt", "study_plan", "video_script"} else ".txt"
+    ext = ".html" if resource_type == "animation_preview" else (".md" if resource_type in {"lecture_doc", "reading", "mindmap", "quiz", "ppt", "study_plan", "video_script"} else ".txt")
+    media_type = "text/html; charset=utf-8" if resource_type == "animation_preview" else "text/markdown; charset=utf-8"
     filename = quote(f"{title}{ext}")
     return Response(
         content=content.encode("utf-8"),
-        media_type="text/markdown; charset=utf-8",
+        media_type=media_type,
         headers={"Content-Disposition": f"attachment; filename*=UTF-8''{filename}"},
     )
 
